@@ -43,7 +43,15 @@ def parse_args():
     parser.add_argument('--T', default=1, type=int, help='it for ui update')
     parser.add_argument('--tau', default=0.5, type=float, help='')
 
-    parser.add_argument("--gamma", type=float, default=0.01, help="Counterfactual inference parameter")
+    parser.add_argument("--gamma", type=float, default=0.01, help="Counterfactual inference parameter (constant gamma, eq.17; used when gamma_mode='fixed')")
+    parser.add_argument("--gamma_mode", type=str, default="fixed", choices=["fixed", "rank"],
+                        help="Counterfactual gamma mode: 'fixed' = constant gamma (eq.17); 'rank' = rank-dependent margin gamma_{u,i}=max(0, y_{u,i}-y_{u,K+1}) (CountER-style)")
+    parser.add_argument("--rank_k", type=int, default=20,
+                        help="Reference K for the rank-dependent margin threshold y_{u,K+1} (used when gamma_mode='rank')")
+    parser.add_argument("--lambda_cf", type=float, default=1.0,
+                        help="Intervention strength lambda for rank-dependent counterfactual calibration (used when gamma_mode='rank')")
+    parser.add_argument("--lambda_cf_list", type=str, default="",
+                        help="Optional list (e.g. '[0.1,0.5,1.0]') to grid-search lambda in rank mode; empty string disables the sweep")
     parser.add_argument("--alpha_2", type=float, default=0.7, help="Item loss weight")
 
     parser.add_argument('--Ks', nargs='?', default='[5, 10, 20, 50]', help='K value of ndcg/recall @ k')

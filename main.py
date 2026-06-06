@@ -112,8 +112,16 @@ class Trainer:
 
         self.IRS_model = ItemRS(input_size=self.input_size, modalities=self.modalities,
                                 embedding_dim=self.emb_dim).to(device)
-        self.counterfactual_coeff = args.gamma
-        self.c_list = None
+        self.gamma_mode = args.gamma_mode
+        self.rank_k = args.rank_k
+        if self.gamma_mode == "rank":
+            # In rank mode the calibration coefficient is lambda (intervention
+            # strength); gamma_{u,i} is computed per user-item from the margin.
+            self.counterfactual_coeff = args.lambda_cf
+            self.c_list = eval(args.lambda_cf_list) if args.lambda_cf_list else None
+        else:
+            self.counterfactual_coeff = args.gamma
+            self.c_list = None
         self.alpha = args.alpha_2
 
         self.optimizer = torch.optim.Adam(list(self.MRS_model.parameters()) +
@@ -457,11 +465,13 @@ class Trainer:
         if self.c_list is None:
             result_eval = self.tester.test_torch_counterfactual(ua_embeddings, ia_embeddings, item_scores_sigmoid.squeeze(),
                                                            users_to_test, is_val, c=self.counterfactual_coeff,
-                                                           incomplete_items=self.incomplete_items_counts, export=False)
+                                                           incomplete_items=self.incomplete_items_counts, export=False,
+                                                           gamma_mode=self.gamma_mode, rank_k=self.rank_k)
         else:
             result_eval = self.tester.test_torch_counterfactual(ua_embeddings, ia_embeddings, item_scores_sigmoid.squeeze(),
                                                            users_to_test, is_val, c_list=self.c_list,
-                                                           incomplete_items=self.incomplete_items_counts, export=False)
+                                                           incomplete_items=self.incomplete_items_counts, export=False,
+                                                           gamma_mode=self.gamma_mode, rank_k=self.rank_k)
         return result_eval
 
     def gen_train(self, next_data):

@@ -21,7 +21,8 @@ class MRS_test:
 
 
     def test_torch_counterfactual(self, ua_embeddings, ia_embeddings, IRS_score_sigmoid,
-                                  users_to_test, is_val, incomplete_items=None, c=40, c_list=None, export=False):
+                                  users_to_test, is_val, incomplete_items=None, c=40, c_list=None, export=False,
+                                  gamma_mode="fixed", rank_k=20):
         best_result = {'precision': np.zeros(len(self.Ks)), 'recall': np.zeros(len(self.Ks)), 'ndcg': np.zeros(len(self.Ks)),
                   'hit_ratio': np.zeros(len(self.Ks)), 'fair_incomplete': np.zeros(len(self.Ks)), 'fair_p': np.zeros(len(self.Ks)),
                        'f_fair': np.zeros(len(self.Ks)), 'fair_exp': np.zeros(len(self.Ks)), 'c': c if c_list is None else c_list[0],
@@ -49,15 +50,35 @@ class MRS_test:
         else:
             missing_items = None
 
+        mask = self.data.pos_items_per_u
+
+        # Rank-dependent margin (CountER-style): gamma_{u,i} = max(0, y_{u,i} - y_{u,K+1}).
+        # y_{u,K+1} is the score of the item just outside the top-rank_k of user u's
+        # recommendation list, where the list is ranked by the base predicted score
+        # `ratings` after masking out already-interacted (training) items. The margin is
+        # independent of lambda, so we compute it once before the lambda sweep.
+        if gamma_mode == "rank":
+            ranking_scores = ratings.copy()
+            ranking_scores[mask[0, :], mask[1, :]] = -np.inf
+            n_rankable = ranking_scores.shape[1]
+            rk = int(min(rank_k, n_rankable - 1))
+            # (rk+1)-th largest score per user, i.e. y_{u,K+1}.
+            thresh = np.partition(ranking_scores, -(rk + 1), axis=1)[:, -(rk + 1)]
+            margin = np.maximum(0.0, ratings - thresh[:, None])  # gamma_{u,i}
+
         for c in c_list:
             result_dic = {'precision': np.zeros(len(self.Ks)), 'recall': np.zeros(len(self.Ks)),
                       'ndcg': np.zeros(len(self.Ks)),
                       'hit_ratio': np.zeros(len(self.Ks)),
                       'fair_incomplete': np.zeros(len(self.Ks)), 'fair_p': np.zeros(len(self.Ks)),
                       'f_fair': np.zeros(len(self.Ks))}
-            rate_ori = (ratings - c) * IRS_score_sigmoid[test_items]
+            if gamma_mode == "rank":
+                # y_new = (y_{u,i} - lambda * gamma_{u,i}) * sigm(y_i); here c == lambda.
+                rate_ori = (ratings - c * margin) * IRS_score_sigmoid[test_items]
+            else:
+                # Eq. 17: y_new = (y_{u,i} - gamma) * sigm(y_i); here c == gamma (constant).
+                rate_ori = (ratings - c) * IRS_score_sigmoid[test_items]
 
-            mask = self.data.pos_items_per_u
             rate = rate_ori.copy()
             rate[mask[0, :], mask[1, :]] = -np.inf
 
