@@ -5,6 +5,7 @@ import random as rd
 import torch
 import numpy as np
 import pickle
+import warnings
 
 from datetime import datetime
 from models import *
@@ -95,7 +96,13 @@ class Trainer:
         self.tau = args.tau
         self.embed_size = args.embed_size
 
-        self.ui_graph = self.ui_graph_raw = pickle.load(open('./data/' + self.dataset + '/train_mat','rb'))
+        # train_mat was pickled with an older SciPy that stored a reference to the
+        # deprecated `scipy.sparse.csr` module path; suppress the resulting warning
+        # while unpickling (the matrix itself loads fine as a current csr_matrix).
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning,
+                                    module="scipy.sparse")
+            self.ui_graph = self.ui_graph_raw = pickle.load(open('./data/' + self.dataset + '/train_mat', 'rb'))
         self.mm_ui_index = [{'x': [], 'y': []} for _ in range(self.n_modalities)]
         self.n_users = self.ui_graph.shape[0]
         self.n_items = self.ui_graph.shape[1]
@@ -162,7 +169,7 @@ class Trainer:
         values = torch.from_numpy(cur_matrix.data)  #
         shape = torch.Size(cur_matrix.shape)
 
-        return torch.sparse.FloatTensor(indices, values, shape).to(torch.float32).cuda()  #
+        return torch.sparse_coo_tensor(indices, values, shape).to(torch.float32).cuda()  #
 
     def innerProduct(self, u_pos, i_pos, u_neg, j_neg):
         pred_i = torch.sum(torch.mul(u_pos, i_pos), dim=-1)
