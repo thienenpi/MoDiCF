@@ -391,9 +391,11 @@ class Trainer:
         self.mm_iu_graph = [t.cuda() if torch.is_tensor(t) else t for t in ckpt['mm_iu_graph']]
         rng = ckpt.get('rng')
         if rng is not None:
-            torch.set_rng_state(rng['torch'])
+            # map_location moved these byte tensors to CUDA; RNG state must be a
+            # CPU ByteTensor, so move them back.
+            torch.set_rng_state(rng['torch'].cpu())
             if rng['cuda'] is not None and torch.cuda.is_available():
-                torch.cuda.set_rng_state_all(rng['cuda'])
+                torch.cuda.set_rng_state_all([s.cpu() for s in rng['cuda']])
             np.random.set_state(rng['numpy'])
             rd.setstate(rng['python'])
         return ckpt['epoch'] + 1
