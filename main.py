@@ -144,6 +144,14 @@ class Trainer:
             self.scheduler = None
             self.diff_scheduler = None
 
+        # Resume support: a single rolling checkpoint holds the full training state.
+        self.ckpt_dir = args.ckpt_dir if args.ckpt_dir else ('./checkpoint/' + self.dataset + '/train/')
+        os.makedirs(self.ckpt_dir, exist_ok=True)
+        self.ckpt_path = os.path.join(self.ckpt_dir, 'train_state.pth')
+        self.best_ckpt_path = os.path.join(self.ckpt_dir, 'best_rec_model.pth')
+        self.save_every = args.save_every
+        self.from_scratch = args.from_scratch
+
         print("Missing rate = {:2f}, complete strategy: {}".format(MR, complete))
 
     def csr_norm(self, csr_mat, mean_flag=False):
@@ -330,7 +338,65 @@ class Trainer:
             np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
         values = torch.from_numpy(sparse_mx.data)
         shape = torch.Size(sparse_mx.shape)
-        return torch.sparse.FloatTensor(indices, values, shape)
+        return torch.sparse_coo_tensor(indices, values, shape)
+
+    @staticmethod
+    def _to_cpu_list(tensors):
+        return [t.detach().cpu() if torch.is_tensor(t) else t for t in tensors]
+
+    def save_checkpoint(self, epoch):
+        """Atomically persist the full training state after completing `epoch` (0-indexed)."""
+        ckpt = {
+            'epoch': epoch,
+            'MRS_model': self.MRS_model.state_dict(),
+            'IRS_model': self.IRS_model.state_dict(),
+            'diff_model': self.diff_model.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+            'diff_optimizer': self.diff_optimizer.state_dict(),
+            'scheduler': self.scheduler.state_dict() if self.scheduler is not None else None,
+            'diff_scheduler': self.diff_scheduler.state_dict() if self.diff_scheduler is not None else None,
+            'best_recall20': self.best_recall20,
+            # Iteratively-refined state that the next epoch depends on.
+            'complete_mm_data': self._to_cpu_list(self.complete_mm_data),
+            'mm_ui_graph': self._to_cpu_list(self.mm_ui_graph),
+            'mm_iu_graph': self._to_cpu_list(self.mm_iu_graph),
+            'rng': {
+                'torch': torch.get_rng_state(),
+                'cuda': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                'numpy': np.random.get_state(),
+                'python': rd.getstate(),
+            },
+        }
+        # Write to a temp file then rename, so a job killed mid-write can't corrupt
+        # the checkpoint that a later run resumes from.
+        tmp_path = self.ckpt_path + '.tmp'
+        torch.save(ckpt, tmp_path)
+        os.replace(tmp_path, self.ckpt_path)
+
+    def load_checkpoint(self):
+        """Restore full training state; returns the epoch index to resume from."""
+        ckpt = torch.load(self.ckpt_path, map_location=self.device)
+        self.MRS_model.load_state_dict(ckpt['MRS_model'])
+        self.IRS_model.load_state_dict(ckpt['IRS_model'])
+        self.diff_model.load_state_dict(ckpt['diff_model'])
+        self.optimizer.load_state_dict(ckpt['optimizer'])
+        self.diff_optimizer.load_state_dict(ckpt['diff_optimizer'])
+        if self.scheduler is not None and ckpt.get('scheduler') is not None:
+            self.scheduler.load_state_dict(ckpt['scheduler'])
+        if self.diff_scheduler is not None and ckpt.get('diff_scheduler') is not None:
+            self.diff_scheduler.load_state_dict(ckpt['diff_scheduler'])
+        self.best_recall20 = ckpt['best_recall20']
+        self.complete_mm_data = [t.cuda() if torch.is_tensor(t) else t for t in ckpt['complete_mm_data']]
+        self.mm_ui_graph = [t.cuda() if torch.is_tensor(t) else t for t in ckpt['mm_ui_graph']]
+        self.mm_iu_graph = [t.cuda() if torch.is_tensor(t) else t for t in ckpt['mm_iu_graph']]
+        rng = ckpt.get('rng')
+        if rng is not None:
+            torch.set_rng_state(rng['torch'])
+            if rng['cuda'] is not None and torch.cuda.is_available():
+                torch.cuda.set_rng_state_all(rng['cuda'])
+            np.random.set_state(rng['numpy'])
+            rd.setstate(rng['python'])
+        return ckpt['epoch'] + 1
 
     def train(self):
         (line_diff_loss, line_train_rec_loss, line_eval_rec_loss, line_var_loss,
@@ -339,7 +405,16 @@ class Trainer:
         n_batch = self.MRS_data.n_train // self.batch_size + 1
         self.best_recall20 = 0
 
-        for epoch in range(self.epoch):
+        start_epoch = 0
+        if (not self.from_scratch) and os.path.exists(self.ckpt_path):
+            start_epoch = self.load_checkpoint()
+            print("Resuming training from checkpoint '%s' at epoch %d (best recall@20 so far = %.5f)"
+                  % (self.ckpt_path, start_epoch + 1, self.best_recall20))
+            if start_epoch >= self.epoch:
+                print("Checkpoint already at/after target epoch %d; nothing to train." % self.epoch)
+                return
+
+        for epoch in range(start_epoch, self.epoch):
             loss, diff_loss, rec_loss, mf_loss, emb_loss, reg_loss, feat_loss = 0., 0., 0., 0., 0., 0., 0.
             contrastive_loss = 0.
             self.topk_p_dict, self.topk_id_dict = {}, {}
@@ -457,8 +532,18 @@ class Trainer:
 
                 if test_ret['recall'][2] > self.best_recall20:
                     self.best_recall20 = test_ret['recall'][2]
+                    torch.save({'MRS_model': self.MRS_model.state_dict(),
+                                'IRS_model': self.IRS_model.state_dict(),
+                                'diff_model': self.diff_model.state_dict(),
+                                'epoch': epoch, 'best_recall20': self.best_recall20},
+                               self.best_ckpt_path)
             else:
                 print("Train Rec Loss=[%.5f], Eval Rec Loss=[%.5f]" % (rec_train_loss, rec_eval_loss))
+
+            # Persist a rolling resume checkpoint at the epoch boundary (after
+            # complete_mm_data / graphs were refined by gen_train above).
+            if (epoch + 1) % self.save_every == 0 or (epoch + 1) == self.epoch:
+                self.save_checkpoint(epoch)
 
 
     def test(self, users_to_test, is_val):

@@ -60,4 +60,13 @@ def parse_args():
     parser.add_argument('--anchor_rate', default=0.25, type=float, help='anchor_rate')
     parser.add_argument('--sample_num_ii', default=8, type=int, help='sample_num')
 
+    # Checkpoint / resume: persist full training state so an interrupted run can
+    # continue instead of restarting from epoch 0.
+    parser.add_argument('--ckpt_dir', type=str, default='',
+                        help="Directory to save/resume the training checkpoint. Empty -> ./checkpoint/<dataset>/train/")
+    parser.add_argument('--save_every', type=int, default=1,
+                        help="Save a resume checkpoint every N epochs (the final epoch is always saved)")
+    parser.add_argument('--from_scratch', action='store_true',
+                        help="Ignore any existing checkpoint in ckpt_dir and start training from epoch 0")
+
     return parser.parse_args()
