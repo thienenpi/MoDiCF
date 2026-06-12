@@ -7,8 +7,6 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=24:00:00
 #SBATCH --requeue
-#SBATCH --output=logs/repro-baby-%j.out
-#SBATCH --error=logs/repro-baby-%j.out
 
 # Job 1: reproduce the author's results on the baby dataset (original fixed-gamma,
 # i.e. eq. 17). Re-submitting this same script resumes from the last checkpoint
@@ -19,6 +17,7 @@
 # --- 2. environment ---
 cd "$SLURM_SUBMIT_DIR" || exit 1
 mkdir -p logs
+exec > "logs/repro-baby-${SLURM_JOB_ID}.out" 2>&1
 module purge 2>/dev/null || true
 source ~/.bashrc
 conda activate thesis
