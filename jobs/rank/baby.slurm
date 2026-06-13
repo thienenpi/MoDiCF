@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=modicf-baby-rank
+#SBATCH --job-name=raid-cf-baby-rank
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4

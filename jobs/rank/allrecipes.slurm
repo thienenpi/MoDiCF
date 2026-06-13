@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=modicf-allrecipes-rank
+#SBATCH --job-name=raid-cf-allrecipes-rank
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
