@@ -2,10 +2,10 @@
 #SBATCH --job-name=modicf-allrecipes-repro
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=24G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
 #SBATCH --gres=gpu:1
-#SBATCH --time=24:00:00
+#SBATCH --time=6:00:00
 #SBATCH --requeue
 
 # Reproduce author's allrecipes results (fixed gamma). Resubmitting resumes from checkpoint.
