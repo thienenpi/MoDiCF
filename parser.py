@@ -32,6 +32,20 @@ def parse_args():
     parser.add_argument('--m_topk_rate', default=0.0001, type=float, help='for reconstruct')
     parser.add_argument('--lambda_1', type=float, default=0.09, help='Control the effect of the contrastive auxiliary task')
 
+    # ---- Completion method selection (Path B: graph-retrieval-enhanced completion) ----
+    # 'mddc'  -> original author self-based diffusion completion (MSDiffusion). Default = reproduce paper.
+    # 'gmddc' -> graph-retrieval-enhanced diffusion completion (GraphMSDiffusion).
+    parser.add_argument("--method", type=str, default="mddc", choices=["mddc", "gmddc"],
+                        help="Completion module: 'mddc' (author self-based) or 'gmddc' (graph-retrieval-enhanced)")
+    parser.add_argument("--retrieval_k", type=int, default=10,
+                        help="[gmddc] Number of retrieved neighbor anchors per item/modality")
+    parser.add_argument("--retrieval_beta", type=float, default=0.3,
+                        help="[gmddc] Weight of graph co-interaction signal added to semantic similarity during retrieval")
+    parser.add_argument("--retrieval_chunk", type=int, default=2048,
+                        help="[gmddc] Query chunk size when building the neighbor index (memory control)")
+    parser.add_argument("--no_retrieval_cache", action="store_true",
+                        help="[gmddc] Disable on-disk caching of the precomputed neighbor index")
+
     parser.add_argument("--dataset", type=str, default="baby", help="Dataset name")
     parser.add_argument("--MR", type=float, default=0.4, help="MR")
     parser.add_argument("--complete", type=str, default="zero", help="Complete strategy; Options: mean, zero, mean, random, none, nn")

@@ -69,6 +69,10 @@ class Trainer:
         else:
             self.complete_mm_data = incomplete_mm_data
 
+        # graph-retrieval completer encodes anchors from the current feature matrices
+        if hasattr(self.diff_model, 'set_full_features'):
+            self.diff_model.set_full_features(self.complete_mm_data)
+
         self.Ks = eval(args.Ks)
         self.test_flag = args.test_flag
         self.tester = MRS_test(data=self.MRS_data, batch_size=batch_size, test_flag=self.test_flag,
@@ -423,6 +427,8 @@ class Trainer:
                 epoch+1, loss, diff_loss, rec_loss, mf_loss, emb_loss, reg_loss, feat_loss, contrastive_loss)
             print(perf_str)
             self.complete_mm_data, rec_train_loss, rec_eval_loss = self.gen_train(next_data=self.complete_mm_data)
+            if hasattr(self.diff_model, 'set_full_features'):
+                self.diff_model.set_full_features(self.complete_mm_data)
             line_eval_rec_loss.append(rec_eval_loss)
 
             if (epoch + 1) % self.verbose == 0:
@@ -514,7 +520,13 @@ def main(args):
     batch_size = args.batch_size
     Unet_channels = eval(args.unet_channels)
 
-    diff_model = MSDiffusion(modalities=modalities, input_channel=1, input_size=input_size, embed_channel=embed_channel,
+    if args.method == 'gmddc':
+        diff_model = GraphMSDiffusion(modalities=modalities, input_channel=1, input_size=input_size,
+                        embed_channel=embed_channel, embed_size=embed_size, conv1d_kernel_size=conv1d_kernel_size,
+                        num_sample_steps=num_sample_steps, sampling_steps=sampling_steps,
+                        Unet_channels=Unet_channels, retrieval_k=args.retrieval_k)
+    else:
+        diff_model = MSDiffusion(modalities=modalities, input_channel=1, input_size=input_size, embed_channel=embed_channel,
                         embed_size=embed_size, conv1d_kernel_size=conv1d_kernel_size, num_sample_steps=num_sample_steps,
                         sampling_steps=sampling_steps, Unet_channels=Unet_channels)
 
@@ -522,8 +534,22 @@ def main(args):
         checkpoint_dir = args.load_dir
         checkpoint_model = args.load_model
         checkpoint = torch.load(checkpoint_dir + checkpoint_model, map_location=device)
-        diff_model.load_state_dict(checkpoint)
+        # gmddc adds fusion heads absent from author checkpoints -> load shared weights non-strictly
+        missing, unexpected = diff_model.load_state_dict(checkpoint, strict=(args.method != 'gmddc'))
+        if args.method == 'gmddc' and (missing or unexpected):
+            print(f"[gmddc] Loaded shared weights non-strictly (missing={len(missing)}, unexpected={len(unexpected)})")
         print("Pretrained diffusion model is loaded from: " + checkpoint_dir + checkpoint_model)
+
+    if args.method == 'gmddc':
+        ui_graph = pickle.load(open('./data/' + args.dataset + '/train_mat', 'rb'))
+        nbr_idx, nbr_sim = build_neighbors(
+            dataset=args.dataset, data_path='./data/' + args.dataset + '/',
+            incomplete_data=incomplete_mm_data, indicator=indicator, modalities=modalities,
+            ui_graph=ui_graph, K=args.retrieval_k, beta=args.retrieval_beta,
+            chunk=args.retrieval_chunk, seed=seed, MR=MR,
+            use_cache=not args.no_retrieval_cache, device=device)
+        diff_model.set_neighbors(nbr_idx, nbr_sim)
+        diff_model.set_full_features(incomplete_mm_data)
 
     MRS_data = MRS_Data(path='./data/' + args.dataset, batch_size=batch_size)
 
