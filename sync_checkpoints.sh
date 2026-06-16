@@ -6,7 +6,7 @@ set -euo pipefail
 
 # --- config: edit REMOTE_HOST (and PORT if non-standard) ---
 REMOTE_USER="${REMOTE_USER:-lhbac29}"
-REMOTE_HOST="${REMOTE_HOST:-CHANGE_ME}"          # e.g. the HCMUS ssh host/IP
+REMOTE_HOST="${REMOTE_HOST:-172.29.74.81}"          # e.g. the HCMUS ssh host/IP
 REMOTE_PORT="${REMOTE_PORT:-22}"
 REMOTE_DIR="${REMOTE_DIR:-/media/lhbac29/raid-cf}"  # repo root on the server
 
