@@ -22,7 +22,8 @@ class MRS_test:
 
     def test_torch_counterfactual(self, ua_embeddings, ia_embeddings, IRS_score_sigmoid,
                                   users_to_test, is_val, incomplete_items=None, c=40, c_list=None, export=False,
-                                  gamma_mode="fixed", rank_k=20):
+                                  gamma_mode="fixed", rank_k=20,
+                                  debias_mode=None, gamma_train=0.0):
         best_result = {'precision': np.zeros(len(self.Ks)), 'recall': np.zeros(len(self.Ks)), 'ndcg': np.zeros(len(self.Ks)),
                   'hit_ratio': np.zeros(len(self.Ks)), 'fair_incomplete': np.zeros(len(self.Ks)), 'fair_p': np.zeros(len(self.Ks)),
                        'f_fair': np.zeros(len(self.Ks)), 'fair_exp': np.zeros(len(self.Ks)), 'c': c if c_list is None else c_list[0],
@@ -72,7 +73,17 @@ class MRS_test:
                       'hit_ratio': np.zeros(len(self.Ks)),
                       'fair_incomplete': np.zeros(len(self.Ks)), 'fair_p': np.zeros(len(self.Ks)),
                       'f_fair': np.zeros(len(self.Ks))}
-            if gamma_mode == "rank":
+            if debias_mode is not None:
+                # Training-time deconfounding: inference rule MUST match the training rule.
+                if debias_mode == "subtract":      # train+test on (u.i - gamma*sigm(y_i))
+                    rate_ori = ratings - gamma_train * IRS_score_sigmoid[test_items]
+                elif debias_mode == "ipw":          # IPW reweights training only; serve plain relevance
+                    rate_ori = ratings.copy()
+                elif debias_mode == "multiply":     # MoDiCF Eq.17 rule (baseline / isolation run)
+                    rate_ori = (ratings - c) * IRS_score_sigmoid[test_items]
+                else:
+                    raise ValueError("unknown debias_mode %r" % debias_mode)
+            elif gamma_mode == "rank":
                 # y_new = (y_{u,i} - lambda * gamma_{u,i}) * sigm(y_i); here c == lambda.
                 rate_ori = (ratings - c * margin) * IRS_score_sigmoid[test_items]
             else:
