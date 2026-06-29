@@ -131,6 +131,13 @@ class Trainer:
             self.c_list = None
         self.alpha = args.alpha_2
 
+        # Training-time counterfactual deconfounding (see parser.py).
+        self.debias_mode = args.debias_mode
+        self.test_debias_mode = args.test_debias_mode if args.test_debias_mode else args.debias_mode
+        self.gamma_train = args.gamma_train
+        self.ipw_clip = args.ipw_clip
+        self.lambda_indep = args.lambda_indep
+
         self.optimizer = torch.optim.Adam(list(self.MRS_model.parameters()) +
                                           list(self.IRS_model.parameters()),
                                           lr=self.lr)
@@ -308,25 +315,50 @@ class Trainer:
         return mf_loss, emb_loss, reg_loss
 
     def bpr_loss_counterfactual(self, users, pos_items, neg_items, pos_item_data, neg_item_data):
-        pos_scores = torch.sum(torch.mul(users, pos_items), dim=1)
-        neg_scores = torch.sum(torch.mul(users, neg_items), dim=1)
+        rel_pos = torch.sum(torch.mul(users, pos_items), dim=1)   # u.i relevance (raw)
+        rel_neg = torch.sum(torch.mul(users, neg_items), dim=1)
 
         pos_item_scores, pos_item_scores_sigmoid = self.IRS_model(pos_item_data)
         neg_item_scores, neg_item_scores_sigmoid = self.IRS_model(neg_item_data)
+        pos_sig = pos_item_scores_sigmoid.squeeze()   # visibility sigm(y_i)
+        neg_sig = neg_item_scores_sigmoid.squeeze()
 
-        pos_scores = pos_scores * pos_item_scores_sigmoid.squeeze()
-        neg_scores = neg_scores * neg_item_scores_sigmoid.squeeze()
+        # Build the (de)biased ranking score used in the pairwise loss. The chosen
+        # rule MUST match the inference rule (utils/MRS_test.py) for train/test consistency.
+        ipw_w = None
+        if self.debias_mode == "multiply":          # MoDiCF baseline: relevance * visibility
+            pos_scores = rel_pos * pos_sig
+            neg_scores = rel_neg * neg_sig
+        elif self.debias_mode == "subtract":        # debiased target (u.i - gamma*sigm(y_i))
+            pos_scores = rel_pos - self.gamma_train * pos_sig
+            neg_scores = rel_neg - self.gamma_train * neg_sig
+        elif self.debias_mode == "ipw":             # plain relevance, reweight by inverse propensity
+            pos_scores, neg_scores = rel_pos, rel_neg
+            ipw_w = torch.clamp(1.0 / (pos_sig + 1e-6), max=self.ipw_clip)
+        else:
+            raise ValueError("unknown debias_mode %r" % self.debias_mode)
 
         regularizer = 1./2*(users**2).sum() + 1./2*(pos_items**2).sum() + 1./2*(neg_items**2).sum()
         regularizer = regularizer / self.batch_size
 
         maxi = F.logsigmoid(pos_scores - neg_scores)
-        mf_loss_ori = -torch.mean(maxi)
+        if ipw_w is not None:
+            mf_loss_ori = -torch.mean(ipw_w * maxi) / (ipw_w.mean() + 1e-8)   # self-normalized IPW
+        else:
+            mf_loss_ori = -torch.mean(maxi)
 
         maxii = F.logsigmoid(pos_item_scores - neg_item_scores)
         mf_loss_item = -torch.mean(maxii)
 
         mf_loss = mf_loss_ori + self.alpha * mf_loss_item
+
+        # Optional independence penalty: drive batch covariance of relevance and
+        # visibility toward zero (enforce zero direct/NDE effect at representation level).
+        if self.lambda_indep > 0:
+            r = rel_pos
+            v = pos_item_scores.squeeze()
+            cov = ((r - r.mean()) * (v - v.mean())).mean()
+            mf_loss = mf_loss + self.lambda_indep * cov ** 2
 
         emb_loss = self.decay * regularizer
         reg_loss = 0.0
@@ -556,7 +588,15 @@ class Trainer:
                                                              self.mm_iu_graph, self.complete_mm_data)
             item_scores, item_scores_sigmoid = self.IRS_model(self.complete_mm_data)
         self.incomplete_items_counts = {item: 0 for item in self.missing_items}
-        if self.c_list is None:
+        if self.debias_mode != "multiply":
+            # Training-time deconfounding: serve with the rule matching training
+            # (or test_debias_mode for the consistency-isolation run).
+            result_eval = self.tester.test_torch_counterfactual(ua_embeddings, ia_embeddings, item_scores_sigmoid.squeeze(),
+                                                           users_to_test, is_val, c=self.gamma_train,
+                                                           incomplete_items=self.incomplete_items_counts, export=False,
+                                                           rank_k=self.rank_k, debias_mode=self.test_debias_mode,
+                                                           gamma_train=self.gamma_train)
+        elif self.c_list is None:
             result_eval = self.tester.test_torch_counterfactual(ua_embeddings, ia_embeddings, item_scores_sigmoid.squeeze(),
                                                            users_to_test, is_val, c=self.counterfactual_coeff,
                                                            incomplete_items=self.incomplete_items_counts, export=False,

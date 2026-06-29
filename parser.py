@@ -54,6 +54,31 @@ def parse_args():
                         help="Optional list (e.g. '[0.1,0.5,1.0]') to grid-search lambda in rank mode; empty string disables the sweep")
     parser.add_argument("--alpha_2", type=float, default=0.7, help="Item loss weight")
 
+    # Training-time counterfactual deconfounding. 'multiply' reproduces MoDiCF
+    # (relevance * visibility in the BPR loss); the new modes change the TRAINING
+    # objective so train and inference use the SAME debiased scoring rule.
+    parser.add_argument("--debias_mode", type=str, default="multiply",
+                        choices=["multiply", "subtract", "ipw"],
+                        help="multiply=MoDiCF baseline; subtract=train+test on (u.i - gamma*sigm(y_i)); "
+                             "ipw=inverse-propensity weighted BPR.")
+    parser.add_argument("--test_debias_mode", type=str, default="",
+                        help="Inference scoring rule; empty -> same as --debias_mode. Set to 'multiply' "
+                             "while training 'subtract' for the train/test-consistency isolation run.")
+    parser.add_argument("--gamma_train", type=float, default=0.5,
+                        help="Deconfounding strength gamma used in BOTH training and inference (subtract mode).")
+    parser.add_argument("--ipw_clip", type=float, default=10.0,
+                        help="Max inverse-propensity weight (ipw mode).")
+    parser.add_argument("--lambda_indep", type=float, default=0.0,
+                        help="Weight of the independence penalty between relevance (u.i) and visibility (y_i); 0 disables.")
+
+    # Modality counterfactual EXPLANATION (PN/PS) — runs once after training when set.
+    parser.add_argument('--explain', action='store_true',
+                        help="After training, compute modality counterfactual explanation metrics (PN/PS) and attribution.")
+    parser.add_argument('--explain_k', type=int, default=20,
+                        help="Top-K used for PN/PS explanation metrics.")
+    parser.add_argument('--ref_kind', type=str, default='mean', choices=['mean', 'zero'],
+                        help="Reference vector f̄^m for the modality do-operation: 'mean' over items or 'zero'.")
+
     parser.add_argument('--Ks', nargs='?', default='[5, 10, 20, 50]', help='K value of ndcg/recall @ k')
     parser.add_argument('--test_flag', nargs='?', default='part', help='Specify the test type from {part, full}, indicating whether the reference is done in mini-batch')
     parser.add_argument('--verbose', type=int, default=1, help='Interval of evaluation.')
