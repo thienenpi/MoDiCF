@@ -15,6 +15,7 @@ from utils import *
 
 from data import *
 from scipy.sparse import csr_matrix
+from sklearn.cluster import KMeans
 from torch import autograd
 
 isLoad = True
@@ -128,6 +129,15 @@ class Trainer:
         self.gamma_train = args.gamma_train
         self.ipw_clip = args.ipw_clip
         self.lambda_indep = args.lambda_indep
+
+        # Group-based rank margin (subtract mode only, gamma_mode='group').
+        self.gamma_mode = args.gamma_mode
+        self.group_k = args.group_k
+        self.group_rank_k = args.group_rank_k
+        self.group_recompute_every = args.group_recompute_every
+        self.lambda_cf = args.lambda_cf
+        self.user_group = None
+        self.group_margin = None
 
         self.optimizer = torch.optim.Adam(list(self.MRS_model.parameters()) +
                                           list(self.IRS_model.parameters()),
@@ -305,7 +315,8 @@ class Trainer:
         reg_loss = 0.0
         return mf_loss, emb_loss, reg_loss
 
-    def bpr_loss_counterfactual(self, users, pos_items, neg_items, pos_item_data, neg_item_data):
+    def bpr_loss_counterfactual(self, users, pos_items, neg_items, pos_item_data, neg_item_data,
+                                 user_idx=None, pos_idx=None, neg_idx=None):
         rel_pos = torch.sum(torch.mul(users, pos_items), dim=1)   # u.i relevance (raw)
         rel_neg = torch.sum(torch.mul(users, neg_items), dim=1)
 
@@ -320,6 +331,13 @@ class Trainer:
         if self.debias_mode == "multiply":          # MoDiCF baseline: relevance * visibility
             pos_scores = rel_pos * pos_sig
             neg_scores = rel_neg * neg_sig
+        elif self.debias_mode == "subtract" and self.gamma_mode == "group":
+            # Group margin: users sharing a "hobby" cluster share one rank-based gamma_{g,i}.
+            g = self.user_group[torch.as_tensor(user_idx, device=rel_pos.device, dtype=torch.long)]
+            pos_margin = self.group_margin[g, torch.as_tensor(pos_idx, device=rel_pos.device, dtype=torch.long)]
+            neg_margin = self.group_margin[g, torch.as_tensor(neg_idx, device=rel_pos.device, dtype=torch.long)]
+            pos_scores = rel_pos - self.lambda_cf * pos_margin * pos_sig
+            neg_scores = rel_neg - self.lambda_cf * neg_margin * neg_sig
         elif self.debias_mode == "subtract":        # debiased target (u.i - gamma*sigm(y_i))
             pos_scores = rel_pos - self.gamma_train * pos_sig
             neg_scores = rel_neg - self.gamma_train * neg_sig
@@ -423,6 +441,32 @@ class Trainer:
             rd.setstate(rng['python'])
         return ckpt['epoch'] + 1
 
+    def _update_group_margins(self):
+        """Cluster users into pseudo-'hobby' groups by embedding similarity and give
+        each group a rank-based margin gamma_{g,i} = max(0, score_{g,i} - y_{g,K+1}),
+        computed from the group's mean item scores (CountER-style, but per-group)."""
+        self.MRS_model.eval()
+        with torch.no_grad():
+            ua_embeddings, ia_embeddings, *rest = self.MRS_model(
+                self.ui_graph, self.iu_graph, self.mm_ui_graph, self.mm_iu_graph, self.complete_mm_data)
+        ua = ua_embeddings.detach().cpu().numpy()
+        ia = ia_embeddings.detach().cpu().numpy()
+
+        n_groups = min(self.group_k, ua.shape[0])
+        labels = KMeans(n_clusters=n_groups, n_init=10).fit_predict(ua)
+
+        ratings = ua @ ia.T  # [n_users, n_items]
+        group_scores = np.stack([
+            ratings[labels == g].mean(axis=0) if np.any(labels == g) else np.zeros(ia.shape[0])
+            for g in range(n_groups)
+        ])
+        rk = int(min(self.group_rank_k, group_scores.shape[1] - 1))
+        thresh = np.partition(group_scores, -(rk + 1), axis=1)[:, -(rk + 1)]  # y_{g,K+1}
+        margin = np.maximum(0.0, group_scores - thresh[:, None])  # gamma_{g,i}
+
+        self.user_group = torch.as_tensor(labels, dtype=torch.long, device=self.device)
+        self.group_margin = torch.as_tensor(margin, dtype=torch.float32, device=self.device)
+
     def train(self):
         (line_diff_loss, line_train_rec_loss, line_eval_rec_loss, line_var_loss,
          line_g_loss, line_cl_loss, line_var_recall, line_var_precision, line_var_ndcg) = (
@@ -440,6 +484,10 @@ class Trainer:
                 return
 
         for epoch in range(start_epoch, self.epoch):
+            if (self.debias_mode == "subtract" and self.gamma_mode == "group"
+                    and epoch % self.group_recompute_every == 0):
+                self._update_group_margins()
+
             loss, diff_loss, rec_loss, mf_loss, emb_loss, reg_loss, feat_loss = 0., 0., 0., 0., 0., 0., 0.
             contrastive_loss = 0.
             self.topk_p_dict, self.topk_id_dict = {}, {}
@@ -465,7 +513,8 @@ class Trainer:
                 mm_pos_data = [self.complete_mm_data[i][pos_items] for i in range(self.n_modalities)]
                 mm_neg_data = [self.complete_mm_data[i][neg_items] for i in range(self.n_modalities)]
                 G_batch_mf_loss, G_batch_emb_loss, G_batch_reg_loss = self.bpr_loss_counterfactual(
-                    G_u_g_embeddings, G_pos_i_g_embeddings, G_neg_i_g_embeddings, mm_pos_data, mm_neg_data
+                    G_u_g_embeddings, G_pos_i_g_embeddings, G_neg_i_g_embeddings, mm_pos_data, mm_neg_data,
+                    user_idx=users, pos_idx=pos_items, neg_idx=neg_items
                 )
 
                 G_mm_u_sim_detach = []
@@ -582,11 +631,15 @@ class Trainer:
         if self.debias_mode != "multiply":
             # Training-time deconfounding: serve with the rule matching training
             # (or test_debias_mode for the consistency-isolation run).
+            use_group = self.gamma_mode == "group" and self.test_debias_mode == "subtract"
             result_eval = self.tester.test_torch_counterfactual(ua_embeddings, ia_embeddings, item_scores_sigmoid.squeeze(),
                                                            users_to_test, is_val, c=self.gamma_train,
                                                            incomplete_items=self.incomplete_items_counts, export=False,
                                                            debias_mode=self.test_debias_mode,
-                                                           gamma_train=self.gamma_train)
+                                                           gamma_train=self.gamma_train,
+                                                           user_group=self.user_group.cpu().numpy() if use_group else None,
+                                                           group_margin=self.group_margin.cpu().numpy() if use_group else None,
+                                                           lambda_cf=self.lambda_cf)
         else:
             result_eval = self.tester.test_torch_counterfactual(ua_embeddings, ia_embeddings, item_scores_sigmoid.squeeze(),
                                                            users_to_test, is_val, c=self.counterfactual_coeff,

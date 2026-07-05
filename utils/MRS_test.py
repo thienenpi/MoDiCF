@@ -22,7 +22,8 @@ class MRS_test:
 
     def test_torch_counterfactual(self, ua_embeddings, ia_embeddings, IRS_score_sigmoid,
                                   users_to_test, is_val, incomplete_items=None, c=40, export=False,
-                                  debias_mode=None, gamma_train=0.0):
+                                  debias_mode=None, gamma_train=0.0,
+                                  user_group=None, group_margin=None, lambda_cf=1.0):
         metric_list = ['recall', 'precision', 'hit_ratio', 'ndcg', 'fair_incomplete', 'fair_p', 'f_fair']
         test_users = users_to_test
         test_items = range(self.ITEM_NUM)
@@ -52,7 +53,11 @@ class MRS_test:
                   'f_fair': np.zeros(len(self.Ks))}
         if debias_mode is not None:
             # Training-time deconfounding: inference rule MUST match the training rule.
-            if debias_mode == "subtract":      # train+test on (u.i - gamma*sigm(y_i))
+            if debias_mode == "subtract" and user_group is not None:
+                # Group margin: users sharing a "hobby" cluster share one gamma_{g,i}.
+                margin = group_margin[user_group[test_users]]  # [n_test_users, n_items]
+                rate_ori = ratings - lambda_cf * margin * IRS_score_sigmoid[test_items]
+            elif debias_mode == "subtract":      # train+test on (u.i - gamma*sigm(y_i))
                 rate_ori = ratings - gamma_train * IRS_score_sigmoid[test_items]
             elif debias_mode == "ipw":          # IPW reweights training only; serve plain relevance
                 rate_ori = ratings.copy()

@@ -57,11 +57,26 @@ def parse_args():
                         help="Inference scoring rule; empty -> same as --debias_mode. Set to 'multiply' "
                              "while training 'subtract' for the train/test-consistency isolation run.")
     parser.add_argument("--gamma_train", type=float, default=0.5,
-                        help="Deconfounding strength gamma used in BOTH training and inference (subtract mode).")
+                        help="Deconfounding strength gamma used in BOTH training and inference "
+                             "(subtract mode, gamma_mode='fixed').")
     parser.add_argument("--ipw_clip", type=float, default=10.0,
                         help="Max inverse-propensity weight (ipw mode).")
     parser.add_argument("--lambda_indep", type=float, default=0.0,
                         help="Weight of the independence penalty between relevance (u.i) and visibility (y_i); 0 disables.")
+
+    # Group-based rank margin (subtract mode only): cluster users into "hobby" groups
+    # by embedding similarity; each group shares one rank-based margin gamma_{g,i}.
+    parser.add_argument("--gamma_mode", type=str, default="fixed", choices=["fixed", "group"],
+                        help="subtract-mode gamma source: 'fixed' = constant --gamma_train; "
+                             "'group' = per-user-group rank-based margin scaled by --lambda_cf.")
+    parser.add_argument("--group_k", type=int, default=10,
+                        help="Number of user clusters ('hobby' groups) for gamma_mode='group'.")
+    parser.add_argument("--group_rank_k", type=int, default=20,
+                        help="Reference K for each group's margin threshold y_{g,K+1} (gamma_mode='group').")
+    parser.add_argument("--group_recompute_every", type=int, default=1,
+                        help="Recluster users and recompute group margins every N epochs (gamma_mode='group').")
+    parser.add_argument("--lambda_cf", type=float, default=1.0,
+                        help="Intervention strength scaling the group margin (gamma_mode='group').")
 
     parser.add_argument('--Ks', nargs='?', default='[5, 10, 20, 50]', help='K value of ndcg/recall @ k')
     parser.add_argument('--test_flag', nargs='?', default='part', help='Specify the test type from {part, full}, indicating whether the reference is done in mini-batch')
