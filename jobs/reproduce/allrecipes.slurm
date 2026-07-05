@@ -25,7 +25,6 @@ python main.py \
     --alpha_1 0.6 --delta 0.4 --eta 0.3 --gnn_embed_size 128 --H 8 --lambda_1 0.15 \
     --dataset allrecipes --load_dir ./checkpoint/allrecipes/ \
     --gamma 20 --alpha_2 0.5 --anchor_rate 0.75 \
-    --gamma_mode fixed \
     --ckpt_dir ./checkpoint/allrecipes/reproduce/
 
 echo "Finished $(date)"

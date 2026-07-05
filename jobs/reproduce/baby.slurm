@@ -28,7 +28,6 @@ nvidia-smi || true
 # --- 3. run (checkpoints live in the working dir, fixed path => resumable) ---
 python main.py \
     --dataset baby \
-    --gamma_mode fixed \
     --ckpt_dir ./checkpoint/baby/reproduce/
 
 echo "Finished $(date)"

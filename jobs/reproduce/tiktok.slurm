@@ -25,7 +25,6 @@ python main.py \
     --alpha_1 0.7 --delta 0.3 --eta 0.6 --H 4 --lambda_1 0.06 \
     --dataset tiktok --load_dir ./checkpoint/tiktok/ \
     --gamma 20 --alpha_2 0.3 --anchor_rate 0.5 \
-    --gamma_mode fixed \
     --ckpt_dir ./checkpoint/tiktok/reproduce/
 
 echo "Finished $(date)"
