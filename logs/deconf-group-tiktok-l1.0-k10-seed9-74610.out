@@ -1,0 +1,27 @@
+Job 74610 on gpu01; lambda_cf=1.0; group_k=10; seed=9; started Sat Aug  1 08:14:43 PM UTC 2026
+Sat Aug  1 20:14:43 2026       
++-----------------------------------------------------------------------------+
+| NVIDIA-SMI 525.147.05   Driver Version: 525.147.05   CUDA Version: 12.0     |
+|-------------------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|                               |                      |               MIG M. |
+|===============================+======================+======================|
+|   0  NVIDIA A100-SXM...  On   | 00000000:BD:00.0 Off |                    0 |
+| N/A   34C    P0    55W / 400W |      0MiB / 40960MiB |      0%      Default |
+|                               |                      |             Disabled |
++-------------------------------+----------------------+----------------------+
+                                                                               
++-----------------------------------------------------------------------------+
+| Processes:                                                                  |
+|  GPU   GI   CI        PID   Type   Process name                  GPU Memory |
+|        ID   ID                                                   Usage      |
+|=============================================================================|
+|  No running processes found                                                 |
++-----------------------------------------------------------------------------+
+[ INFO : 2026-08-01 20:14:53,860 ] - Preprocess missing values with zero
+[ INFO : 2026-08-01 20:14:55,954 ] - Pretrained diffusion model is loaded from: ./checkpoint/tiktok/best_model.pth
+[ INFO : 2026-08-01 20:14:56,482 ] - Completed data loaded from: ./checkpoint/tiktok/completed_data.pkl
+/media/lhbac29/raid-cf/main.py:106: DeprecationWarning: Please import `csr_matrix` from the `scipy.sparse` namespace; the `scipy.sparse.csr` namespace is deprecated and will be removed in SciPy 2.0.0.
+  self.ui_graph = self.ui_graph_raw = pickle.load(open('./data/' + self.dataset + '/train_mat', 'rb'))
+[ INFO : 2026-08-01 20:14:56,560 ] - Missing rate = 0.400000, complete strategy: zero
