@@ -1,4 +1,4 @@
-"""Graph-retrieval-enhanced diffusion completion (Path B).
+"""Graph-retrieval-enhanced diffusion completion.
 
 ``GraphMSDiffusion`` subclasses the author's ``MSDiffusion`` and changes ONLY how
 the diffusion denoiser is conditioned. The original self-based conditioning uses
@@ -11,9 +11,6 @@ Because MoDiCF's U-Net already cross-attends to the condition tensor, we keep th
 condition shape identical to the original ([B, embed_channel, embed_size]) and
 simply produce a *graph-aware* condition instead of a purely self-based one. This
 makes the change fully drop-in: the diffusion/U-Net stack is untouched.
-
-The original ``MSDiffusion`` class is not modified, so `--method mddc` reproduces
-the authors' results exactly.
 """
 
 import numpy as np

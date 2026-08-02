@@ -1,4 +1,4 @@
-"""Item-graph neighbor retrieval for graph-retrieval-enhanced modality completion (Path B).
+"""Item-graph neighbor retrieval for graph-retrieval-enhanced modality completion.
 
 This module implements the *Modality-Aware Subgraph Retrieval* idea from
 "Robust Multimodal Recommendation via Graph Retrieval-Enhanced Modality Completion"
@@ -13,8 +13,7 @@ retrieve a fixed set of ``K`` *anchor* items that
      itself observes, optionally boosted by item-item co-interaction structure
      derived from the user-item graph (``train_mat``).
 
-The original self-based MSDiffusion is left completely untouched; the returned
-neighbor index/weights are consumed only by ``GraphMSDiffusion``.
+The returned neighbor index/weights are consumed by ``GraphMSDiffusion``.
 """
 
 import os
@@ -50,7 +49,7 @@ def build_item_cooccurrence(ui_graph):
 
 
 def _neighbor_cache_path(path, dataset, MR, seed, K, beta):
-    fname = f"gmddc_neighbors_seed{seed}_MR{MR}_K{K}_beta{beta}.npz"
+    fname = f"retrieval_neighbors_seed{seed}_MR{MR}_K{K}_beta{beta}.npz"
     return os.path.join(path, fname)
 
 
@@ -81,10 +80,10 @@ def build_neighbors(dataset, data_path, incomplete_data, indicator, modalities,
         blob = np.load(cache_file)
         nbr_idx = [torch.from_numpy(blob[f"idx_{m}"]).long().to(device) for m in range(n_modalities)]
         nbr_sim = [torch.from_numpy(blob[f"sim_{m}"]).float().to(device) for m in range(n_modalities)]
-        print(f"[gmddc] Loaded cached neighbor index from {cache_file}")
+        print(f"[retrieval] Loaded cached neighbor index from {cache_file}")
         return nbr_idx, nbr_sim
 
-    print(f"[gmddc] Building neighbor index (K={K}, beta={beta}) ...")
+    print(f"[retrieval] Building neighbor index (K={K}, beta={beta}) ...")
 
     ind = np.asarray(indicator).astype(bool)               # [N, M]
     # per-modality L2-normalized features (rows for unobserved modalities are zeroed
@@ -167,13 +166,13 @@ def build_neighbors(dataset, data_path, incomplete_data, indicator, modalities,
 
         nbr_idx.append(torch.from_numpy(idx_out).long().to(device))
         nbr_sim.append(torch.from_numpy(sim_out).float().to(device))
-        print(f"[gmddc]   modality '{modalities[m]}': pool={pool.shape[0]} items, "
+        print(f"[retrieval]   modality '{modalities[m]}': pool={pool.shape[0]} items, "
               f"{int(no_valid.sum())} fallback-to-self")
 
     if use_cache:
         np.savez(cache_file,
                  **{f"idx_{m}": nbr_idx[m].cpu().numpy() for m in range(n_modalities)},
                  **{f"sim_{m}": nbr_sim[m].cpu().numpy() for m in range(n_modalities)})
-        print(f"[gmddc] Cached neighbor index to {cache_file}")
+        print(f"[retrieval] Cached neighbor index to {cache_file}")
 
     return nbr_idx, nbr_sim
