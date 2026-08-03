@@ -1,7 +1,8 @@
 #!/bin/bash
-# Pull trained weights / training state / logs from the HCMUS server into this
-# local repo, mirroring the SAME relative paths (checkpoint/, logs/). Safe to run
-# repeatedly (e.g. via cron/watch) as a backup against server crash or disk loss.
+# Pull trained weights / training state / logs / neighbor-index caches from the HCMUS
+# server into this local repo, mirroring the SAME relative paths (checkpoint/, logs/,
+# data/**/retrieval_neighbors_*.npz). Safe to run repeatedly (e.g. via cron/watch) as a
+# backup against server crash or disk loss.
 set -euo pipefail
 
 # --- config: edit REMOTE_HOST (and PORT if non-standard) ---
@@ -33,5 +34,17 @@ for sub in checkpoint logs; do
         echo ">> skip ${sub}/ (not present on server)"
     fi
 done
+
+# The precomputed anchor index lives next to the features under data/<dataset>/ and is
+# what pins down which neighbors a run actually used, so it is worth keeping. Pull only
+# the .npz caches - never the multi-GB *_feat.npy files.
+if ssh -p "${REMOTE_PORT}" "${REMOTE_USER}@${REMOTE_HOST}" "[ -d '${REMOTE_DIR}/data' ]"; then
+    echo ">> syncing data/**/retrieval_neighbors_*.npz -> ${LOCAL_DIR}/data/"
+    rsync "${RSYNC_OPTS[@]}" --prune-empty-dirs \
+        --include='*/' --include='retrieval_neighbors_*.npz' --exclude='*' \
+        "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/data/" "${LOCAL_DIR}/data/"
+else
+    echo ">> skip data/ (not present on server)"
+fi
 
 echo "Done $(date)"

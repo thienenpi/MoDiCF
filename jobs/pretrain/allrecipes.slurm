@@ -38,7 +38,9 @@ python main_pretrain.py \
 SAVE_PATH=$(grep -m1 '^Save path: ' "$LOG" | sed 's/^Save path: //')
 STABLE="./checkpoint/allrecipes/gmddc-pretrain-k${K}-b${BETA}-seed${SEED}"
 if [ -n "$SAVE_PATH" ] && [ -d "$SAVE_PATH" ]; then
-    ln -sfn "$(cd "$SAVE_PATH" && pwd)" "$STABLE"
+    # relative target: both dirs share the same parent, so the symlink still
+    # resolves after sync_checkpoints.sh rsyncs checkpoint/ to a different machine.
+    ln -sfn "$(basename "$SAVE_PATH")" "$STABLE"
     echo "Pretrained completer available at: $STABLE -> $SAVE_PATH"
 else
     echo "WARNING: could not resolve save path; stage 2 needs --load_dir set manually" >&2
