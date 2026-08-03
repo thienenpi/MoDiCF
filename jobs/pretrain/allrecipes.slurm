@@ -7,19 +7,23 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=48:00:00
 #SBATCH --requeue
+#SBATCH --array=0-9
 
 # Stage 1/2: pretrain the graph-retrieval-enhanced diffusion completer (GraphMSDiffusion)
 # on allrecipes. The author's published checkpoint cannot be reused as-is because this method
 # adds per-modality fusion heads, so the completer must be pretrained here.
 # Builds (and caches, under data/allrecipes/) the top-K anchor index before training.
-# Usage: sbatch jobs/pretrain/allrecipes.slurm [retrieval_k] [retrieval_beta] [seed]  (defaults: 10, 0.3, 0)
+# One array task per seed: the missing mask is seed-dependent (data.py incomplete()),
+# so a completer pretrained on seed s' mask must not be reused for seed s != s' -
+# it would have been trained on the ground truth of cells that seed s hides.
+# Usage: sbatch jobs/pretrain/allrecipes.slurm [retrieval_k] [retrieval_beta]  (defaults: 10, 0.3)
 # Feeds stage 2 = jobs/gmddc/allrecipes.slurm via the checkpoint/allrecipes/gmddc-pretrain-* symlink.
 
 cd "$SLURM_SUBMIT_DIR" || exit 1
 mkdir -p logs
 K="${1:-10}"
 BETA="${2:-0.3}"
-SEED="${3:-0}"
+SEED="${SLURM_ARRAY_TASK_ID:-0}"
 LOG="logs/gmddc-pretrain-allrecipes-k${K}-b${BETA}-seed${SEED}-${SLURM_JOB_ID}.out"
 exec > "$LOG" 2>&1
 module purge 2>/dev/null || true
@@ -35,7 +39,7 @@ python main_pretrain.py \
 
 # main_pretrain.py writes to a timestamped dir and prints "Save path: <dir>".
 # Expose it under a stable name so stage 2 can pass it as --load_dir.
-SAVE_PATH=$(grep -m1 '^Save path: ' "$LOG" | sed 's/^Save path: //')
+SAVE_PATH=$(grep -m1 'Save path: ' "$LOG" | sed 's/.*Save path: //')
 STABLE="./checkpoint/allrecipes/gmddc-pretrain-k${K}-b${BETA}-seed${SEED}"
 if [ -n "$SAVE_PATH" ] && [ -d "$SAVE_PATH" ]; then
     # relative target: both dirs share the same parent, so the symlink still

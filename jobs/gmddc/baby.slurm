@@ -37,17 +37,20 @@ nvidia-smi || true
 # main.py caches completed_data.pkl inside --load_dir, and the completion depends on the
 # seed-specific missing mask. Give each seed its own copy of the pretrained weights so the
 # array members cannot read or overwrite each other's completion.
-PRETRAIN="./checkpoint/baby/gmddc-pretrain-k${K}-b${BETA}-seed0"
+PRETRAIN="./checkpoint/baby/gmddc-pretrain-k${K}-b${BETA}-seed${SEED}"
 RUN_DIR="./checkpoint/baby/gmddc-k${K}-b${BETA}-seed${SEED}"
-if [ ! -f "${PRETRAIN}/best_model.pth" ]; then
-    echo "Missing ${PRETRAIN}/best_model.pth - run jobs/pretrain/baby.slurm first" >&2
+# last_model.pth, not best_model.pth: the latter is selected by reconstruction MSE
+# against the ground truth of the held-out cells, which this setting treats as
+# unavailable. Stage 1 logs show train/eval loss nearly equal, so last costs nothing.
+if [ ! -f "${PRETRAIN}/last_model.pth" ]; then
+    echo "Missing ${PRETRAIN}/last_model.pth - run jobs/pretrain/baby.slurm first" >&2
     exit 1
 fi
 mkdir -p "$RUN_DIR"
-cp -n "${PRETRAIN}/best_model.pth" "${RUN_DIR}/"
+cp -n "${PRETRAIN}/last_model.pth" "${RUN_DIR}/"
 
 python main.py \
-    --dataset baby --load_dir "${RUN_DIR}/" --seed ${SEED} \
+    --dataset baby --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
     --retrieval_k ${K} --retrieval_beta ${BETA}
 
 echo "Finished $(date)"
