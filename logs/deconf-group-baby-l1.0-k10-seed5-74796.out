@@ -1,0 +1,27 @@
+Job 74796 on gpu04; lambda_cf=1.0; group_k=10; seed=5; started Thu Aug  6 06:41:24 PM +07 2026
+Thu Aug  6 18:41:24 2026       
++---------------------------------------------------------------------------------------+
+| NVIDIA-SMI 535.216.03             Driver Version: 535.216.03   CUDA Version: 12.2     |
+|-----------------------------------------+----------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
+|                                         |                      |               MIG M. |
+|=========================================+======================+======================|
+|   0  Tesla V100-DGXS-32GB           On  | 00000000:07:00.0 Off |                    0 |
+| N/A   46C    P0              39W / 300W |      0MiB / 32768MiB |      0%      Default |
+|                                         |                      |                  N/A |
++-----------------------------------------+----------------------+----------------------+
+                                                                                         
++---------------------------------------------------------------------------------------+
+| Processes:                                                                            |
+|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
+|        ID   ID                                                             Usage      |
+|=======================================================================================|
+|  No running processes found                                                           |
++---------------------------------------------------------------------------------------+
+[ INFO : 2026-08-06 18:41:31,578 ] - Preprocess missing values with zero
+[ INFO : 2026-08-06 18:41:32,128 ] - Pretrained diffusion model is loaded from: ./checkpoint/baby/best_model.pth
+[ INFO : 2026-08-06 18:41:34,056 ] - Completed data loaded from: ./checkpoint/baby/completed_data.pkl
+/media/lhbac29/raid-cf/main.py:106: DeprecationWarning: Please import `csr_matrix` from the `scipy.sparse` namespace; the `scipy.sparse.csr` namespace is deprecated and will be removed in SciPy 2.0.0.
+  self.ui_graph = self.ui_graph_raw = pickle.load(open('./data/' + self.dataset + '/train_mat', 'rb'))
+[ INFO : 2026-08-06 18:41:34,263 ] - Missing rate = 0.400000, complete strategy: zero

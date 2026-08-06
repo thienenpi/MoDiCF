@@ -1,0 +1,37 @@
+Job 74792 on gpu03; lambda_cf=1.0; group_k=10; seed=2; started Thu Aug  6 11:42:58 AM UTC 2026
+Thu Aug  6 11:42:59 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.82.07              Driver Version: 580.82.07      CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-PCIE-40GB          On  |   00000000:64:00.0 Off |                    1 |
+| N/A   26C    P0             32W /  250W |       0MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+[ INFO : 2026-08-06 11:45:49,726 ] - Preprocess missing values with zero
+Traceback (most recent call last):
+  File "/media/lhbac29/raid-cf/main.py", line 722, in <module>
+    main(args)
+  File "/media/lhbac29/raid-cf/main.py", line 686, in main
+    load_multimodal_dataset(dataset=dataset, MR=MR, complete=complete, seed=seed, device=device,
+  File "/media/lhbac29/raid-cf/data.py", line 59, in load_multimodal_dataset
+    ori_data = [torch.tensor(data, dtype=dtype).to(device) for data in ori_data]
+  File "/media/lhbac29/raid-cf/data.py", line 59, in <listcomp>
+    ori_data = [torch.tensor(data, dtype=dtype).to(device) for data in ori_data]
+RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Finished Thu Aug  6 11:45:52 AM UTC 2026
