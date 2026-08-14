@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Aggregate best-Recall@20-epoch metrics across multiple seed logs into mean +/- std.
 
+Follows the MoDiCF paper protocol (Sec 5.2.3): 10 repeated runs, report mean and
+standard deviation of Recall/Precision/NDCG/F/F_fuse at K=10 and K=20. Per-run
+epoch selection is the best test Recall@20, matching the released training code.
+
 Usage:
-    python scripts/aggregate_seeds.py "logs/deconf-baby-g0.5-seed*.out"
+    python scripts/aggregate_seeds.py "logs/deconf-group-baby-l1.0-k10-seed*.out" [--ddof 0|1]
+
+The argument is a shell glob (keep it quoted so Python expands it, not the shell)
+matching one log file per seed run.
 """
 import glob
 import re
@@ -30,23 +37,31 @@ def best_recall20(path):
             if not m:
                 continue
             recall = parse_floats(m.group(1))
+            precision = parse_floats(m.group(2))
             ndcg = parse_floats(m.group(4))
             fair_p = parse_floats(m.group(5))
             f_fuse = parse_floats(m.group(6))
             r20 = recall[2]
             if r20 > best_r20:
                 best_r20 = r20
-                best = dict(recall=recall, ndcg=ndcg, fair_p=fair_p, f_fuse=f_fuse)
+                best = dict(recall=recall, precision=precision, ndcg=ndcg,
+                            fair_p=fair_p, f_fuse=f_fuse)
     return best
 
 
 def main():
-    if len(sys.argv) != 2:
+    argv = sys.argv[1:]
+    ddof = 1
+    if "--ddof" in argv:
+        i = argv.index("--ddof")
+        ddof = int(argv[i + 1])
+        del argv[i:i + 2]
+    if len(argv) != 1:
         print(__doc__)
         sys.exit(1)
-    paths = sorted(glob.glob(sys.argv[1]))
+    paths = sorted(glob.glob(argv[0]))
     if not paths:
-        print(f"No files matched: {sys.argv[1]}")
+        print(f"No files matched: {argv[0]}")
         sys.exit(1)
 
     per_seed = []
@@ -65,16 +80,19 @@ def main():
 
     def stat(key, idx):
         vals = np.array([b[key][idx] for b in per_seed]) * 100
-        return vals.mean(), vals.std()
+        # ddof=1 (sample std) matches "average results and standard deviations"
+        # over the paper's 10 repeated runs; pass --ddof 0 for population std.
+        return vals.mean(), vals.std(ddof=ddof if n > ddof else 0)
 
-    print(f"\nAggregated over {n} seed run(s):")
-    for label, idx in [("@10", 0), ("@20", 2)]:
-        r_m, r_s = stat("recall", idx)
-        n_m, n_s = stat("ndcg", idx)
-        f_m, f_s = stat("fair_p", idx)
-        ff_m, ff_s = stat("f_fuse", idx)
-        print(f"  Recall{label}={r_m:.2f}±{r_s:.2f}  NDCG{label}={n_m:.2f}±{n_s:.2f}  "
-              f"F{label}={f_m:.2f}±{f_s:.2f}  F_fuse{label}={ff_m:.2f}±{ff_s:.2f}")
+    print(f"\nAggregated over {n} seed run(s)  [std: ddof={ddof}]:")
+    for label, idx in [("@5", 0), ("@10", 1), ("@20", 2)]:
+        lb = label.ljust(3)
+        cells = []
+        for name, key in [("Recall", "recall"), ("Prec", "precision"), ("NDCG", "ndcg"),
+                          ("F", "fair_p"), ("F_fuse", "f_fuse")]:
+            m, s = stat(key, idx)
+            cells.append(f"{name}{lb}={m:.2f}±{s:.2f}")
+        print("  " + "  ".join(cells))
 
     if n < 10:
         print(f"\nNote: only {n}/10 seed runs found — not yet the full 10-run paper protocol.")
