@@ -18,20 +18,48 @@ if [ "$REMOTE_HOST" = "CHANGE_ME" ]; then
     exit 1
 fi
 
+# One dataset per run: keeps a single invocation short enough to babysit, and
+# lets several run in parallel (one terminal each) when you do want everything.
+DATASETS=(baby tiktok allrecipes)
+
+usage() {
+    echo "usage: $0 <dataset>" >&2
+    echo "  dataset: ${DATASETS[*]} | all" >&2
+    exit 1
+}
+
+[ $# -eq 1 ] || usage
+DATASET="$1"
+
+if [ "$DATASET" = all ]; then
+    for d in "${DATASETS[@]}"; do "$0" "$d"; done
+    exit 0
+fi
+
+valid=0
+for d in "${DATASETS[@]}"; do [ "$d" = "$DATASET" ] && valid=1; done
+[ "$valid" -eq 1 ] || { echo "unknown dataset: $DATASET" >&2; usage; }
+
 # -a archive, -z compress, --partial resume interrupted transfers,
 # --info=progress2 single overall progress bar. No --delete: never remove local
 # backups just because they vanished on the server.
 RSYNC_OPTS=(-az --partial --info=progress2 -e "ssh -p ${REMOTE_PORT}")
 
-for sub in checkpoint logs; do
+# checkpoint/ is one dir per dataset, so scope it to that dir. logs/ is flat with
+# the dataset embedded in each filename, so filter by name instead.
+for sub in "checkpoint/${DATASET}" logs; do
     src="${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/${sub}/"
     dst="${LOCAL_DIR}/${sub}/"
+    filter=()
+    [ "$sub" = logs ] && filter=(--include="*${DATASET}*" --exclude="*")
+
     if ssh -p "${REMOTE_PORT}" "${REMOTE_USER}@${REMOTE_HOST}" "[ -d '${REMOTE_DIR}/${sub}' ]"; then
         echo ">> syncing ${sub}/ -> ${dst}"
-        rsync "${RSYNC_OPTS[@]}" "$src" "$dst"
+        mkdir -p "$dst"
+        rsync "${RSYNC_OPTS[@]}" "${filter[@]}" "$src" "$dst"
     else
         echo ">> skip ${sub}/ (not present on server)"
     fi
 done
 
-echo "Done $(date)"
+echo "Done ${DATASET} $(date)"
