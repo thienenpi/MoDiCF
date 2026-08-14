@@ -24,6 +24,8 @@ parser.add_argument("--lr", type=int, default=0.0001, help="Learning rate")
 parser.add_argument("--lr_decay", type=float, default=0.95, help="Learning rate decay factor, lr decays to lr*lr_decay")
 parser.add_argument("--lr_decay_steps", type=int, default=100, help="Learning rate decay steps")
 parser.add_argument("--seed", type=int, default=0, help="Random seed")
+parser.add_argument("--data_seed", type=int, default=None,
+                    help="Seed for modality-mask sampling (default: same as --seed)")
 
 parser.add_argument("--embed_channel", type=int, default=16, help="Embedding size")
 parser.add_argument("--embed_size", type=int, default=32, help="Embedding size")
@@ -161,12 +163,14 @@ def main(args):
     MR = args.MR
     complete = args.complete
     seed = args.seed
+    data_seed = args.data_seed if args.data_seed is not None else seed
     isNormalize = args.normalize
     isReduceDim = args.reduce_dim
     dim = args.dim
     ori_data, incomplete_data, modalities, n_sample, input_size, missing_items, indicator, svd, min_data, max_data = (
-        load_multimodal_dataset(dataset=dataset, MR=MR, complete=complete, seed=seed, device=device,
+        load_multimodal_dataset(dataset=dataset, MR=MR, complete=complete, seed=data_seed, device=device,
                                 normalize=isNormalize, reduced=isReduceDim, dim=dim))
+    print("Modality mask sampled with data_seed=%d; model seeded with seed=%d" % (data_seed, seed))
     seed_everything(seed)
 
     date_s = datetime.now().strftime('%Y%m%d%H%M%S')

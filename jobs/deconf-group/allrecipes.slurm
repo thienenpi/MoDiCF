@@ -34,7 +34,7 @@ nvidia-smi || true
 
 python main.py \
     --alpha_1 0.6 --delta 0.4 --eta 0.3 --gnn_embed_size 128 --H 8 --lambda_1 0.15 \
-    --dataset allrecipes --load_dir ./checkpoint/allrecipes/ --seed ${SEED} \
+    --dataset allrecipes --load_dir ./checkpoint/allrecipes/ --seed ${SEED} --data_seed 0 \
     --alpha_2 0.5 --anchor_rate 0.75 \
     --debias_mode subtract --gamma_mode group --lambda_cf ${LAMBDA} --group_k ${GROUP_K} --from_scratch \
     --ckpt_dir ./checkpoint/allrecipes/deconf-group-l${LAMBDA}-k${GROUP_K}-seed${SEED}/

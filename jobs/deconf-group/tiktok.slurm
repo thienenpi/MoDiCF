@@ -34,7 +34,7 @@ nvidia-smi || true
 
 python main.py \
     --alpha_1 0.7 --delta 0.3 --eta 0.6 --H 4 --lambda_1 0.06 \
-    --dataset tiktok --load_dir ./checkpoint/tiktok/ --seed ${SEED} \
+    --dataset tiktok --load_dir ./checkpoint/tiktok/ --seed ${SEED} --data_seed 0 \
     --alpha_2 0.3 --anchor_rate 0.5 \
     --debias_mode subtract --gamma_mode group --lambda_cf ${LAMBDA} --group_k ${GROUP_K} --from_scratch \
     --ckpt_dir ./checkpoint/tiktok/deconf-group-l${LAMBDA}-k${GROUP_K}-seed${SEED}/

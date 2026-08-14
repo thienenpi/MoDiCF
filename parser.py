@@ -10,6 +10,8 @@ def parse_args():
     parser.add_argument("--lr", type=int, default=0.0001, help="Learning rate")
     parser.add_argument("--lr_decay", type=float, default=-1, help="Learning rate decay factor, lr decays to lr*lr_decay")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
+    parser.add_argument("--data_seed", type=int, default=None,
+                        help="Seed for modality-mask sampling (default: same as --seed)")
 
     parser.add_argument("--embed_channel", type=int, default=16, help="Embedding size")
     parser.add_argument("--embed_size", type=int, default=32, help="Embedding size")

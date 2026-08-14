@@ -679,12 +679,14 @@ def main(args):
     MR = args.MR
     complete = args.complete
     seed = args.seed
+    data_seed = args.data_seed if args.data_seed is not None else seed
     isNormalize = args.normalize
     isReduceDim = args.reduce_dim
     dim = args.dim
     ori_mm_data, incomplete_mm_data, modalities, n_sample, input_size, missing_items, indicator, svd, min_data, max_data = (
-        load_multimodal_dataset(dataset=dataset, MR=MR, complete=complete, seed=seed, device=device,
+        load_multimodal_dataset(dataset=dataset, MR=MR, complete=complete, seed=data_seed, device=device,
                                 normalize=isNormalize, reduced=isReduceDim, dim=dim))
+    print("Modality mask sampled with data_seed=%d; model seeded with seed=%d" % (data_seed, seed))
 
     seed_everything(seed)
     embed_channel = args.embed_channel

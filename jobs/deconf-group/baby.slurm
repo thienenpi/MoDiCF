@@ -33,7 +33,7 @@ echo "Job $SLURM_JOB_ID on $(hostname); lambda_cf=$LAMBDA; group_k=$GROUP_K; see
 nvidia-smi || true
 
 python main.py \
-    --dataset baby --load_dir ./checkpoint/baby/ --seed ${SEED} \
+    --dataset baby --load_dir ./checkpoint/baby/ --seed ${SEED} --data_seed 0 \
     --debias_mode subtract --gamma_mode group --lambda_cf ${LAMBDA} --group_k ${GROUP_K} --from_scratch \
     --ckpt_dir ./checkpoint/baby/deconf-group-l${LAMBDA}-k${GROUP_K}-seed${SEED}/
 
