@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Aggregate best-Recall@20-epoch metrics across multiple seed logs into mean +/- std.
 
-The per-run epoch is picked by max test Recall@20, matching the rule in the author's
-main.py (self.best_recall20). Pass a second glob to also run the paired t-test the
-paper reports (Sec 5.2.2, p < 0.05); runs are paired by the seed in the filename.
+Follows the MoDiCF paper protocol (Sec 5.2.3): 10 repeated runs, report mean and
+standard deviation of Recall/Precision/NDCG/F/F_fuse at K=5, 10 and 20. The per-run
+epoch is picked by max test Recall@20, matching the rule in the author's main.py
+(self.best_recall20). Pass a second glob to also run the paired t-test the paper
+reports (Sec 5.2.2, p < 0.05); runs are paired by the seed in the filename.
 
 Usage:
-    python scripts/aggregate_seeds.py "logs/gmddc-baby-k10-b0.3-seed*.out"
+    python scripts/aggregate_seeds.py "logs/gmddc-baby-k10-b0.3-seed*.out" [--ddof 0|1]
     python scripts/aggregate_seeds.py "logs/gmddc-baby-*-seed*.out" "logs/repro-baby-*-seed*.out"
+
+Globs must stay quoted so Python expands them, not the shell. --ddof selects the std
+denominator (default 1 = sample std).
 """
 import glob
 import os
@@ -50,14 +55,21 @@ def best_recall20(path):
             if not m:
                 continue
             recall = parse_floats(m.group(1))
+            precision = parse_floats(m.group(2))
             ndcg = parse_floats(m.group(4))
             fair_p = parse_floats(m.group(5))
             f_fuse = parse_floats(m.group(6))
             r20 = recall[2]
             if r20 > best_r20:
                 best_r20 = r20
-                best = dict(recall=recall, ndcg=ndcg, fair_p=fair_p, f_fuse=f_fuse)
+                best = dict(recall=recall, precision=precision, ndcg=ndcg,
+                            fair_p=fair_p, f_fuse=f_fuse)
     return best
+
+
+# Reported metrics, in table order. Ks = [5, 10, 20, 50] indexes every value list.
+METRICS = [("Recall", "recall"), ("Prec", "precision"), ("NDCG", "ndcg"),
+           ("F", "fair_p"), ("F_fuse", "f_fuse")]
 
 
 def paired_ttest(treat, base):
@@ -79,8 +91,7 @@ def paired_ttest(treat, base):
 
     for label, idx in [("@10", 1), ("@20", 2)]:
         cells = []
-        for key, name in [("recall", "Recall"), ("ndcg", "NDCG"),
-                          ("fair_p", "F"), ("f_fuse", "F_fuse")]:
+        for name, key in METRICS:
             t = np.array([treat[s][key][idx] for s in seeds]) * 100
             b = np.array([base[s][key][idx] for s in seeds]) * 100
             delta = t.mean() - b.mean()
@@ -95,8 +106,14 @@ def paired_ttest(treat, base):
     print("  * = significant at p < 0.05")
 
 
-def load_arm(pattern, label):
-    """Parse every log matching pattern into (list of metrics, {seed: metrics})."""
+def load_arm(pattern, label, ddof=1):
+    """Parse every log matching pattern into (list of metrics, {seed: metrics}).
+
+    ddof is passed straight to np.std: 1 (sample std) matches "average results and
+    standard deviations" over the paper's 10 repeated runs (Sec 5.2.3); 0 gives the
+    population std. It is clamped to 0 when there are too few runs for ddof to be
+    defined, so a single-run glob still prints instead of yielding nan.
+    """
     paths = sorted(glob.glob(pattern))
     if not paths:
         print(f"No files matched: {pattern}")
@@ -123,30 +140,40 @@ def load_arm(pattern, label):
         print("No usable runs found.")
         sys.exit(1)
 
-    print(f"Aggregated over {len(per_run)} seed run(s):")
-    # Ks = [5, 10, 20, 50] -> index 1 is @10, index 2 is @20
-    for lab, idx in [("@10", 1), ("@20", 2)]:
+    n = len(per_run)
+    eff_ddof = ddof if n > ddof else 0
+    print(f"Aggregated over {n} seed run(s)  [std: ddof={eff_ddof}]:")
+    # Ks = [5, 10, 20, 50] -> index 0 is @5, index 1 is @10, index 2 is @20
+    for lab, idx in [("@5", 0), ("@10", 1), ("@20", 2)]:
         out = []
-        for key, name in [("recall", "Recall"), ("ndcg", "NDCG"),
-                          ("fair_p", "F"), ("f_fuse", "F_fuse")]:
+        for name, key in METRICS:
             v = np.array([b[key][idx] for b in per_run]) * 100
-            out.append(f"{name}{lab}={v.mean():.2f}±{v.std():.2f}")
+            out.append(f"{name}{lab.ljust(3)}={v.mean():.2f}±{v.std(ddof=eff_ddof):.2f}")
         print("  " + "  ".join(out))
 
-    if len(per_run) < 10:
-        print(f"  Note: only {len(per_run)}/10 runs - not yet the full 10-run paper protocol.")
+    if n < 10:
+        print(f"  Note: only {n}/10 runs - not yet the full 10-run paper protocol.")
     return per_run, by_seed
 
 
 def main():
-    if len(sys.argv) not in (2, 3):
+    argv = sys.argv[1:]
+    ddof = 1
+    if "--ddof" in argv:
+        i = argv.index("--ddof")
+        if i + 1 >= len(argv):
+            print("--ddof needs a value (0 or 1)")
+            sys.exit(1)
+        ddof = int(argv[i + 1])
+        del argv[i:i + 2]
+    if len(argv) not in (1, 2):
         print(__doc__)
         sys.exit(1)
 
-    _, treat = load_arm(sys.argv[1], "treatment")
-    if len(sys.argv) == 3:
+    _, treat = load_arm(argv[0], "treatment", ddof)
+    if len(argv) == 2:
         print()
-        _, base = load_arm(sys.argv[2], "baseline")
+        _, base = load_arm(argv[1], "baseline", ddof)
         paired_ttest(treat, base)
 
 
