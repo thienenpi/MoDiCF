@@ -34,7 +34,7 @@ echo "Job $SLURM_JOB_ID on $(hostname); retrieval_k=$K; beta=$BETA; seed=$SEED; 
 nvidia-smi || true
 
 python main_pretrain.py \
-    --dataset baby --seed ${SEED} \
+    --dataset baby --variant retrieval --seed ${SEED} \
     --retrieval_k ${K} --retrieval_beta ${BETA}
 
 # main_pretrain.py writes to a timestamped dir and prints "Save path: <dir>".

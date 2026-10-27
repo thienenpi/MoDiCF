@@ -52,7 +52,7 @@ cp -n "${PRETRAIN}/last_model.pth" "${RUN_DIR}/"
 # dataset-specific hyperparameters from the author's README
 python main.py \
     --alpha_1 0.6 --delta 0.4 --eta 0.3 --gnn_embed_size 128 --H 8 --lambda_1 0.15 \
-    --dataset allrecipes --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
+    --dataset allrecipes --variant retrieval --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
     --gamma 20 --alpha_2 0.5 --anchor_rate 0.75 \
     --retrieval_k ${K} --retrieval_beta ${BETA}
 

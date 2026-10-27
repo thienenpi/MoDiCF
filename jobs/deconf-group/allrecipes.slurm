@@ -31,7 +31,7 @@ if [ -f "${PRETRAIN}/last_model.pth" ]; then
 else
     echo "=== Stage 1: pretraining completer"
     python main_pretrain.py \
-        --dataset allrecipes --seed ${SEED} || exit 1
+        --dataset allrecipes --variant debias --seed ${SEED} || exit 1
 
     SAVE_PATH=$(grep -m1 'Save path: ' "$LOG" | sed 's/.*Save path: //')
     if [ -n "$SAVE_PATH" ] && [ -d "$SAVE_PATH" ]; then
@@ -54,7 +54,7 @@ cp -n "${PRETRAIN}/last_model.pth" "${RUN_DIR}/"
 echo "=== Stage 2: joint MoDiCF training"
 python main.py \
     --alpha_1 0.6 --delta 0.4 --eta 0.3 --gnn_embed_size 128 --H 8 --lambda_1 0.15 \
-    --dataset allrecipes --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
+    --dataset allrecipes --variant debias --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
     --alpha_2 0.5 --anchor_rate 0.75 \
     --debias_mode subtract --gamma_mode group --lambda_cf ${LAMBDA} --group_k ${GROUP_K} \
     --ckpt_dir "${RUN_DIR}/"

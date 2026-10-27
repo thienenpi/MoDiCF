@@ -50,7 +50,7 @@ mkdir -p "$RUN_DIR"
 cp -n "${PRETRAIN}/last_model.pth" "${RUN_DIR}/"
 
 python main.py \
-    --dataset baby --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
+    --dataset baby --variant retrieval --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
     --retrieval_k ${K} --retrieval_beta ${BETA}
 
 echo "Finished $(date)"

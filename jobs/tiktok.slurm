@@ -59,7 +59,7 @@ if [ -f "${PRETRAIN}/last_model.pth" ]; then
 else
     echo "=== Stage 1: pretraining completer"
     python main_pretrain.py \
-        --dataset tiktok --seed ${SEED} \
+        --dataset tiktok --variant retrieval --seed ${SEED} \
         --retrieval_k ${K} --retrieval_beta ${BETA} || exit 1
 
     # main_pretrain.py writes to a timestamped dir and prints "Save path: <dir>".
@@ -97,7 +97,7 @@ echo "=== Stage 2: joint MoDiCF training"
 # dataset-specific hyperparameters from the author's README
 python main.py \
     --alpha_1 0.7 --delta 0.3 --eta 0.6 --H 4 --lambda_1 0.06 \
-    --dataset tiktok --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
+    --dataset tiktok --variant retrieval --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
     --gamma 20 --alpha_2 0.3 --anchor_rate 0.5 \
     --retrieval_k ${K} --retrieval_beta ${BETA}
 

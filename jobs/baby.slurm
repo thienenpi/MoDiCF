@@ -59,7 +59,7 @@ if [ -f "${PRETRAIN}/last_model.pth" ]; then
 else
     echo "=== Stage 1: pretraining completer"
     python main_pretrain.py \
-        --dataset baby --seed ${SEED} \
+        --dataset baby --variant retrieval --seed ${SEED} \
         --retrieval_k ${K} --retrieval_beta ${BETA} || exit 1
 
     # main_pretrain.py writes to a timestamped dir and prints "Save path: <dir>".
@@ -95,7 +95,7 @@ cp -n "${PRETRAIN}/last_model.pth" "${RUN_DIR}/"
 
 echo "=== Stage 2: joint MoDiCF training"
 python main.py \
-    --dataset baby --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
+    --dataset baby --variant retrieval --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
     --retrieval_k ${K} --retrieval_beta ${BETA}
 
 echo "Finished $(date)"
