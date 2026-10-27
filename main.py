@@ -480,6 +480,8 @@ class Trainer:
         start_epoch = 0
         if (not self.from_scratch) and os.path.exists(self.ckpt_path):
             start_epoch = self.load_checkpoint()
+            # the completer's anchor features are not checkpointed; resync them to the restored data
+            self.diff_model.set_full_features(self.complete_mm_data)
             print("Resuming training from checkpoint '%s' at epoch %d (best recall@20 so far = %.5f)"
                   % (self.ckpt_path, start_epoch + 1, self.best_recall20))
             if start_epoch >= self.epoch:
