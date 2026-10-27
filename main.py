@@ -46,6 +46,7 @@ class Trainer:
         self.epoch = epoch
         self.device = device
         self.diff_model = diff_model.to(device)
+        self.use_retrieval = isinstance(diff_model, GraphMSDiffusion)
         self.lambda_rec = lambda_rec
         if type(min_data) is int:
             self.min_data = [min_data] * self.n_modalities
@@ -72,7 +73,8 @@ class Trainer:
             self.complete_mm_data = incomplete_mm_data
 
         # the completer encodes anchors from the current feature matrices
-        self.diff_model.set_full_features(self.complete_mm_data)
+        if self.use_retrieval:
+            self.diff_model.set_full_features(self.complete_mm_data)
 
         self.Ks = eval(args.Ks)
         self.test_flag = args.test_flag
@@ -481,7 +483,8 @@ class Trainer:
         if (not self.from_scratch) and os.path.exists(self.ckpt_path):
             start_epoch = self.load_checkpoint()
             # the completer's anchor features are not checkpointed; resync them to the restored data
-            self.diff_model.set_full_features(self.complete_mm_data)
+            if self.use_retrieval:
+                self.diff_model.set_full_features(self.complete_mm_data)
             print("Resuming training from checkpoint '%s' at epoch %d (best recall@20 so far = %.5f)"
                   % (self.ckpt_path, start_epoch + 1, self.best_recall20))
             if start_epoch >= self.epoch:
@@ -592,7 +595,8 @@ class Trainer:
                 epoch+1, loss, diff_loss, rec_loss, mf_loss, emb_loss, reg_loss, feat_loss, contrastive_loss)
             print(perf_str)
             self.complete_mm_data, rec_train_loss, rec_eval_loss = self.gen_train(next_data=self.complete_mm_data)
-            self.diff_model.set_full_features(self.complete_mm_data)
+            if self.use_retrieval:
+                self.diff_model.set_full_features(self.complete_mm_data)
             line_eval_rec_loss.append(rec_eval_loss)
 
             if (epoch + 1) % self.verbose == 0:
@@ -702,30 +706,39 @@ def main(args):
     batch_size = args.batch_size
     Unet_channels = eval(args.unet_channels)
 
-    diff_model = GraphMSDiffusion(modalities=modalities, input_channel=1, input_size=input_size,
-                    embed_channel=embed_channel, embed_size=embed_size, conv1d_kernel_size=conv1d_kernel_size,
-                    num_sample_steps=num_sample_steps, sampling_steps=sampling_steps,
-                    Unet_channels=Unet_channels, retrieval_k=args.retrieval_k)
+    if args.variant == "debias":
+        diff_model = MSDiffusion(modalities=modalities, input_channel=1, input_size=input_size, embed_channel=embed_channel,
+                            embed_size=embed_size, conv1d_kernel_size=conv1d_kernel_size, num_sample_steps=num_sample_steps,
+                            sampling_steps=sampling_steps, Unet_channels=Unet_channels)
+    else:
+        diff_model = GraphMSDiffusion(modalities=modalities, input_channel=1, input_size=input_size,
+                        embed_channel=embed_channel, embed_size=embed_size, conv1d_kernel_size=conv1d_kernel_size,
+                        num_sample_steps=num_sample_steps, sampling_steps=sampling_steps,
+                        Unet_channels=Unet_channels, retrieval_k=args.retrieval_k)
 
     if isLoad:
         checkpoint_dir = args.load_dir
         checkpoint_model = args.load_model
         checkpoint = torch.load(checkpoint_dir + checkpoint_model, map_location=device)
-        # the fusion heads are absent from author checkpoints -> load shared weights non-strictly
-        missing, unexpected = diff_model.load_state_dict(checkpoint, strict=False)
-        if missing or unexpected:
-            print(f"Loaded shared weights non-strictly (missing={len(missing)}, unexpected={len(unexpected)})")
+        if args.variant == "debias":
+            diff_model.load_state_dict(checkpoint)
+        else:
+            # the fusion heads are absent from author checkpoints -> load shared weights non-strictly
+            missing, unexpected = diff_model.load_state_dict(checkpoint, strict=False)
+            if missing or unexpected:
+                print(f"Loaded shared weights non-strictly (missing={len(missing)}, unexpected={len(unexpected)})")
         print("Pretrained diffusion model is loaded from: " + checkpoint_dir + checkpoint_model)
 
-    ui_graph = pickle.load(open('./data/' + args.dataset + '/train_mat', 'rb'))
-    nbr_idx, nbr_sim = build_neighbors(
-        dataset=args.dataset, data_path='./data/' + args.dataset + '/',
-        incomplete_data=incomplete_mm_data, indicator=indicator, modalities=modalities,
-        ui_graph=ui_graph, K=args.retrieval_k, beta=args.retrieval_beta,
-        chunk=args.retrieval_chunk, seed=seed, MR=MR,
-        use_cache=not args.no_retrieval_cache, device=device)
-    diff_model.set_neighbors(nbr_idx, nbr_sim)
-    diff_model.set_full_features(incomplete_mm_data)
+    if args.variant != "debias":
+        ui_graph = pickle.load(open('./data/' + args.dataset + '/train_mat', 'rb'))
+        nbr_idx, nbr_sim = build_neighbors(
+            dataset=args.dataset, data_path='./data/' + args.dataset + '/',
+            incomplete_data=incomplete_mm_data, indicator=indicator, modalities=modalities,
+            ui_graph=ui_graph, K=args.retrieval_k, beta=args.retrieval_beta,
+            chunk=args.retrieval_chunk, seed=seed, MR=MR,
+            use_cache=not args.no_retrieval_cache, device=device)
+        diff_model.set_neighbors(nbr_idx, nbr_sim)
+        diff_model.set_full_features(incomplete_mm_data)
 
     MRS_data = MRS_Data(path='./data/' + args.dataset, batch_size=batch_size)
 

@@ -9,43 +9,60 @@
 #SBATCH --requeue
 #SBATCH --array=0-9
 
-# FULL FRAMEWORK (RAID-CF) on allrecipes: graph-retrieval-enhanced diffusion completer
-# (jobs/gmddc) + group-margin counterfactual debiasing (jobs/deconf-group), trained jointly.
-# Stage 1 reuses the gmddc completer pretrain (same main_pretrain.py / GraphMSDiffusion);
-# the deconf-group pretrain-seed* checkpoints are NOT usable: they lack the fusion heads.
+# RAID-CF on allrecipes, one variant per submission (passed straight through as --variant):
+#   retrieval = graph-retrieval completer + MoDiCF multiply scoring   (ablation: module 1)
+#   debias    = author's self-based completer + group-margin debias   (ablation: module 2)
+#   raid-cf   = graph-retrieval completer + group-margin debias       (full framework)
+# Stage 1 pretrains the completer unless a matching one exists: retrieval / raid-cf share
+# the gmddc pretrain (GraphMSDiffusion), debias reuses pretrain-seed* (MSDiffusion).
 # Repeated over 10 seeds (paper protocol, Sec 5.2.3) via a SLURM job array.
-# Usage: sbatch jobs/raid-cf/allrecipes.slurm [lambda_cf] [group_k] [retrieval_k] [retrieval_beta]
+# Usage: sbatch jobs/raid-cf/allrecipes.slurm <retrieval|debias|raid-cf> [lambda_cf] [group_k] [retrieval_k] [retrieval_beta]
 #        (defaults: 1.0, 10, 10, 0.3)
-# Aggregate with: python scripts/aggregate_seeds.py "logs/raid-cf-allrecipes-l<lambda>-gk<group_k>-k<K>-b<beta>-seed*.out"
+# Aggregate with: python scripts/aggregate_seeds.py "logs/raid-cf-<variant>-allrecipes-*-seed*.out"
 
 cd "$SLURM_SUBMIT_DIR" || exit 1
 mkdir -p logs
-LAMBDA="${1:-1.0}"
-GROUP_K="${2:-10}"
-K="${3:-10}"
-BETA="${4:-0.3}"
+VARIANT="$1"
+case "$VARIANT" in
+    retrieval|debias|raid-cf) ;;
+    *) echo "Usage: sbatch $0 <retrieval|debias|raid-cf> [lambda_cf] [group_k] [retrieval_k] [retrieval_beta]" >&2; exit 1 ;;
+esac
+LAMBDA="${2:-1.0}"
+GROUP_K="${3:-10}"
+K="${4:-10}"
+BETA="${5:-0.3}"
 SEED="${SLURM_ARRAY_TASK_ID:-0}"
-LOG="logs/raid-cf-allrecipes-l${LAMBDA}-gk${GROUP_K}-k${K}-b${BETA}-seed${SEED}-${SLURM_JOB_ID}.out"
+
+# Name each run only by the hyperparameters its variant actually uses.
+case "$VARIANT" in
+    retrieval) TAG="k${K}-b${BETA}" ;;
+    debias)    TAG="l${LAMBDA}-gk${GROUP_K}" ;;
+    raid-cf)   TAG="l${LAMBDA}-gk${GROUP_K}-k${K}-b${BETA}" ;;
+esac
+LOG="logs/raid-cf-${VARIANT}-allrecipes-${TAG}-seed${SEED}-${SLURM_JOB_ID}.out"
 exec > "$LOG" 2>&1
 module purge 2>/dev/null || true
 source ~/.bashrc
 conda activate thesis
 
-echo "Job $SLURM_JOB_ID on $(hostname); lambda_cf=$LAMBDA; group_k=$GROUP_K; retrieval_k=$K; beta=$BETA; seed=$SEED; started $(date)"
+echo "Job $SLURM_JOB_ID on $(hostname); variant=$VARIANT; lambda_cf=$LAMBDA; group_k=$GROUP_K; retrieval_k=$K; beta=$BETA; seed=$SEED; started $(date)"
 nvidia-smi || true
 
-# Same name as jobs/pretrain/allrecipes.slurm, so a completer pretrained for the gmddc ablation is reused.
-PRETRAIN="./checkpoint/allrecipes/gmddc-pretrain-k${K}-b${BETA}-seed${SEED}"
-# Own run dir: holds completed_data.pkl and the resume checkpoint, so this run can never
-# resume from (or overwrite) an ablation run's state.
-RUN_DIR="./checkpoint/allrecipes/raid-cf-l${LAMBDA}-gk${GROUP_K}-k${K}-b${BETA}-seed${SEED}"
+if [ "$VARIANT" = "debias" ]; then
+    PRETRAIN="./checkpoint/allrecipes/pretrain-seed${SEED}"
+else
+    PRETRAIN="./checkpoint/allrecipes/gmddc-pretrain-k${K}-b${BETA}-seed${SEED}"
+fi
+# Own run dir: holds completed_data.pkl and the resume checkpoint, so no variant can
+# resume from (or overwrite) another variant's or an old ablation's state.
+RUN_DIR="./checkpoint/allrecipes/raid-cf-${VARIANT}-${TAG}-seed${SEED}"
 
 if [ -f "${PRETRAIN}/last_model.pth" ]; then
     echo "=== Stage 1 skipped: reusing $PRETRAIN"
 else
-    echo "=== Stage 1: pretraining graph-retrieval completer"
+    echo "=== Stage 1: pretraining completer"
     python main_pretrain.py \
-        --dataset allrecipes --seed ${SEED} \
+        --dataset allrecipes --seed ${SEED} --variant ${VARIANT} \
         --retrieval_k ${K} --retrieval_beta ${BETA} || exit 1
 
     SAVE_PATH=$(grep -m1 'Save path: ' "$LOG" | sed 's/.*Save path: //')
@@ -66,13 +83,18 @@ fi
 mkdir -p "$RUN_DIR"
 cp -n "${PRETRAIN}/last_model.pth" "${RUN_DIR}/"
 
-echo "=== Stage 2: joint RAID-CF training"
+# --gamma is the multiply-mode inference coefficient (author README value for allrecipes);
+# the debias / raid-cf variants use the group margin instead and ignore it.
+GAMMA_ARG=""
+[ "$VARIANT" = "retrieval" ] && GAMMA_ARG="--gamma 20"
+
+echo "=== Stage 2: joint training ($VARIANT)"
 python main.py \
     --alpha_1 0.6 --delta 0.4 --eta 0.3 --gnn_embed_size 128 --H 8 --lambda_1 0.15 \
     --dataset allrecipes --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
     --alpha_2 0.5 --anchor_rate 0.75 \
+    --variant ${VARIANT} --lambda_cf ${LAMBDA} --group_k ${GROUP_K} \
     --retrieval_k ${K} --retrieval_beta ${BETA} \
-    --debias_mode subtract --gamma_mode group --lambda_cf ${LAMBDA} --group_k ${GROUP_K} \
-    --ckpt_dir "${RUN_DIR}/"
+    --ckpt_dir "${RUN_DIR}/" ${GAMMA_ARG}
 
 echo "Finished $(date)"

@@ -32,6 +32,12 @@ def parse_args():
     parser.add_argument('--m_topk_rate', default=0.0001, type=float, help='for reconstruct')
     parser.add_argument('--lambda_1', type=float, default=0.09, help='Control the effect of the contrastive auxiliary task')
 
+    # ---- Framework variant: picks the completer AND the debias rule (overrides --debias_mode/--gamma_mode) ----
+    parser.add_argument("--variant", type=str, required=True, choices=["retrieval", "debias", "raid-cf"],
+                        help="retrieval = graph-retrieval completer + MoDiCF multiply scoring; "
+                             "debias = author's self-based completer + group-margin debias; "
+                             "raid-cf = graph-retrieval completer + group-margin debias")
+
     # ---- Graph-retrieval-enhanced modality completion ----
     parser.add_argument("--retrieval_k", type=int, default=10,
                         help="Number of retrieved neighbor anchors per item/modality")
@@ -103,4 +109,9 @@ def parse_args():
     parser.add_argument('--from_scratch', action='store_true',
                         help="Ignore any existing checkpoint in ckpt_dir and start training from epoch 0")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.variant == "retrieval":
+        args.debias_mode = "multiply"
+    else:
+        args.debias_mode, args.gamma_mode = "subtract", "group"
+    return args

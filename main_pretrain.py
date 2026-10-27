@@ -34,6 +34,8 @@ parser.add_argument("--num_sample_steps", type=int, default=1000, help="Number o
 parser.add_argument("--sampling_steps", type=int, default=10, help="Number of sampling steps")
 parser.add_argument("--lambda_rec", type=float, default=1, help="Reconstruction loss weight")
 
+parser.add_argument("--variant", type=str, required=True, choices=["retrieval", "debias", "raid-cf"],
+                    help="debias = author's MSDiffusion completer; retrieval / raid-cf = GraphMSDiffusion")
 parser.add_argument("--retrieval_k", type=int, default=10, help="Number of retrieved anchors per item/modality")
 parser.add_argument("--retrieval_beta", type=float, default=0.3, help="Weight of graph co-interaction signal in retrieval")
 parser.add_argument("--retrieval_chunk", type=int, default=2048, help="Query chunk size when building neighbor index")
@@ -73,6 +75,7 @@ class Trainer:
         self.epoch = epoch
         self.device = device
         self.model = model.to(device)
+        self.use_retrieval = isinstance(model, GraphMSDiffusion)
         self.lambda_rec = lambda_rec
         if type(min_data) is int:
             self.min_data = [min_data] * self.n_modalities
@@ -112,9 +115,9 @@ class Trainer:
                 batch_ind = self.indicator[batch_idx, :]
 
                 # anchors are retrieved by global item id; pass the batch's global indices.
+                extra = {'item_idx': batch_idx} if self.use_retrieval else {}
                 diff_loss, rec_loss = self.model(data=batch, indicator=batch_ind, print_progress=False,
-                                               min_data=self.min_data, max_data=self.max_data,
-                                               item_idx=batch_idx)
+                                               min_data=self.min_data, max_data=self.max_data, **extra)
                 loss = self.lambda_rec * rec_loss + diff_loss
                 batch_loss.append(loss.item())
                 batch_diff_loss.append(diff_loss.item())
@@ -126,7 +129,8 @@ class Trainer:
                       .format(epoch, i+1, len(batch_idxs), loss.item(), diff_loss.item(), rec_loss.item()))
 
             next_data, rec_train_loss, rec_eval_loss = self.evaluate(next_data=next_data)
-            self.model.set_full_features(next_data)
+            if self.use_retrieval:
+                self.model.set_full_features(next_data)
 
             rec_train_loss = np.mean(rec_train_loss)
             rec_eval_loss_list.append(rec_eval_loss)
@@ -193,19 +197,24 @@ def main(args):
     sampling_steps = args.sampling_steps
     Unet_channels = eval(args.unet_channels)
 
-    model = GraphMSDiffusion(modalities=modalities, input_channel=1, input_size=input_size,
-                    embed_channel=embed_channel, embed_size=embed_size, conv1d_kernel_size=conv1d_kernel_size,
-                    num_sample_steps=num_sample_steps, sampling_steps=sampling_steps,
-                    Unet_channels=Unet_channels, retrieval_k=args.retrieval_k)
-    ui_graph = pickle.load(open('./data/' + args.dataset + '/train_mat', 'rb'))
-    nbr_idx, nbr_sim = build_neighbors(
-        dataset=args.dataset, data_path='./data/' + args.dataset + '/',
-        incomplete_data=incomplete_data, indicator=indicator, modalities=modalities,
-        ui_graph=ui_graph, K=args.retrieval_k, beta=args.retrieval_beta,
-        chunk=args.retrieval_chunk, seed=seed, MR=MR,
-        use_cache=not args.no_retrieval_cache, device=device)
-    model.set_neighbors(nbr_idx, nbr_sim)
-    model.set_full_features(incomplete_data)
+    if args.variant == "debias":
+        model = MSDiffusion(modalities=modalities, input_channel=1, input_size=input_size, embed_channel=embed_channel,
+                            embed_size=embed_size, conv1d_kernel_size=conv1d_kernel_size, num_sample_steps=num_sample_steps,
+                            sampling_steps=sampling_steps, Unet_channels=Unet_channels)
+    else:
+        model = GraphMSDiffusion(modalities=modalities, input_channel=1, input_size=input_size,
+                        embed_channel=embed_channel, embed_size=embed_size, conv1d_kernel_size=conv1d_kernel_size,
+                        num_sample_steps=num_sample_steps, sampling_steps=sampling_steps,
+                        Unet_channels=Unet_channels, retrieval_k=args.retrieval_k)
+        ui_graph = pickle.load(open('./data/' + args.dataset + '/train_mat', 'rb'))
+        nbr_idx, nbr_sim = build_neighbors(
+            dataset=args.dataset, data_path='./data/' + args.dataset + '/',
+            incomplete_data=incomplete_data, indicator=indicator, modalities=modalities,
+            ui_graph=ui_graph, K=args.retrieval_k, beta=args.retrieval_beta,
+            chunk=args.retrieval_chunk, seed=seed, MR=MR,
+            use_cache=not args.no_retrieval_cache, device=device)
+        model.set_neighbors(nbr_idx, nbr_sim)
+        model.set_full_features(incomplete_data)
 
     trainer = Trainer(ori_data=ori_data, incomplete_data=incomplete_data, indicator=indicator, lr=args.lr,
                       lr_decay=args.lr_decay, batch_size=args.batch_size, epoch=args.epoch,
