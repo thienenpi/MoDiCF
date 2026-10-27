@@ -8,6 +8,11 @@
 #SBATCH --time=6:00:00
 #SBATCH --requeue
 
+# NOTE (develop/raid-cf): NOT RUNNABLE on this branch. main.py now requires
+# --variant {retrieval,debias,raid-cf}, and none matches the original MoDiCF
+# (self-based completer + multiply scoring): retrieval enables the graph completer,
+# debias switches scoring to subtract. Run it from develop/counterfactual-debias-modes instead.
+
 # Job 1: reproduce the author's results on the baby dataset (original fixed-gamma,
 # i.e. eq. 17). Re-submitting this same script resumes from the last checkpoint
 # instead of restarting from epoch 0.

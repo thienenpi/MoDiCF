@@ -9,6 +9,11 @@
 #SBATCH --requeue
 #SBATCH --array=0-9
 
+# NOTE (develop/raid-cf): NOT RUNNABLE on this branch. main.py / main_pretrain.py now
+# require --variant {retrieval,debias,raid-cf}, and none matches this experiment:
+# --variant debias forces gamma_mode=group, overriding the fixed --gamma_train used here.
+# Run it from develop/counterfactual-debias-modes instead.
+
 cd "$SLURM_SUBMIT_DIR" || exit 1
 mkdir -p logs
 GAMMA="${1:-0.5}"

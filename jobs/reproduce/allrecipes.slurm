@@ -8,6 +8,11 @@
 #SBATCH --time=6:00:00
 #SBATCH --requeue
 
+# NOTE (develop/raid-cf): NOT RUNNABLE on this branch. main.py now requires
+# --variant {retrieval,debias,raid-cf}, and none matches the original MoDiCF
+# (self-based completer + multiply scoring): retrieval enables the graph completer,
+# debias switches scoring to subtract. Run it from develop/counterfactual-debias-modes instead.
+
 # Reproduce author's allrecipes results (fixed gamma). Resubmitting resumes from checkpoint.
 
 cd "$SLURM_SUBMIT_DIR" || exit 1
