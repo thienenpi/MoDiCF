@@ -13,18 +13,22 @@ cd "$SLURM_SUBMIT_DIR" || exit 1
 mkdir -p logs
 LAMBDA="${1:-1.0}"
 GROUP_K="${2:-10}"
+IRS_AVAIL="${3:-none}"
+# 3rd arg given -> tag log/run dir with it; omitted -> old names (old M2 runs)
+TAG=""
+[ -n "$3" ] && TAG="-avail${IRS_AVAIL}"
 SEED="${SLURM_ARRAY_TASK_ID:-0}"
-LOG="logs/deconf-group-tiktok-l${LAMBDA}-k${GROUP_K}-seed${SEED}-${SLURM_JOB_ID}.out"
+LOG="logs/deconf-group-tiktok-l${LAMBDA}-k${GROUP_K}${TAG}-seed${SEED}-${SLURM_JOB_ID}.out"
 exec > "$LOG" 2>&1
 module purge 2>/dev/null || true
 source ~/.bashrc
 conda activate thesis
 
-echo "Job $SLURM_JOB_ID on $(hostname); lambda_cf=$LAMBDA; group_k=$GROUP_K; seed=$SEED; started $(date)"
+echo "Job $SLURM_JOB_ID on $(hostname); lambda_cf=$LAMBDA; group_k=$GROUP_K; irs_avail=$IRS_AVAIL; seed=$SEED; started $(date)"
 nvidia-smi || true
 
 PRETRAIN="./checkpoint/tiktok/pretrain-seed${SEED}"
-RUN_DIR="./checkpoint/tiktok/deconf-group-l${LAMBDA}-k${GROUP_K}-seed${SEED}"
+RUN_DIR="./checkpoint/tiktok/deconf-group-l${LAMBDA}-k${GROUP_K}${TAG}-seed${SEED}"
 
 if [ -f "${PRETRAIN}/last_model.pth" ]; then
     echo "=== Stage 1 skipped: reusing $PRETRAIN"
@@ -57,6 +61,7 @@ python main.py \
     --dataset tiktok --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
     --alpha_2 0.3 --anchor_rate 0.5 \
     --debias_mode subtract --gamma_mode group --lambda_cf ${LAMBDA} --group_k ${GROUP_K} \
+    --irs_avail ${IRS_AVAIL} \
     --ckpt_dir "${RUN_DIR}/"
 
 echo "Finished $(date)"
