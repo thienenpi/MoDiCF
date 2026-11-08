@@ -118,8 +118,10 @@ class Trainer:
                          id_cat_rate=self.id_cat_rate, modalities=self.modalities,
                          input_size=self.input_size).to(device)
 
+        self.irs_avail = args.irs_avail
+        self.avail = torch.as_tensor(np.asarray(indicator), dtype=torch.float32, device=device)  # o_i, [n_items, M]
         self.IRS_model = ItemRS(input_size=self.input_size, modalities=self.modalities,
-                                embedding_dim=self.emb_dim).to(device)
+                                embedding_dim=self.emb_dim, avail_mode=self.irs_avail).to(device)
         self.counterfactual_coeff = args.gamma
         self.alpha = args.alpha_2
 
@@ -322,6 +324,11 @@ class Trainer:
 
         pos_item_scores, pos_item_scores_sigmoid = self.IRS_model(pos_item_data)
         neg_item_scores, neg_item_scores_sigmoid = self.IRS_model(neg_item_data)
+        if self.irs_avail != "none":   # availability-aware item branch (--irs_avail)
+            pos_t = torch.as_tensor(pos_idx, device=self.avail.device, dtype=torch.long)
+            neg_t = torch.as_tensor(neg_idx, device=self.avail.device, dtype=torch.long)
+            pos_item_scores, pos_item_scores_sigmoid = self.IRS_model.forward_avail(pos_item_data, self.avail[pos_t])
+            neg_item_scores, neg_item_scores_sigmoid = self.IRS_model.forward_avail(neg_item_data, self.avail[neg_t])
         pos_sig = pos_item_scores_sigmoid.squeeze()   # visibility sigm(y_i)
         neg_sig = neg_item_scores_sigmoid.squeeze()
 
@@ -627,6 +634,14 @@ class Trainer:
             ua_embeddings, ia_embeddings, *rest = self.MRS_model(self.ui_graph, self.iu_graph, self.mm_ui_graph,
                                                              self.mm_iu_graph, self.complete_mm_data)
             item_scores, item_scores_sigmoid = self.IRS_model(self.complete_mm_data)
+            if self.irs_avail != "none":   # availability-aware item branch (--irs_avail)
+                item_scores, item_scores_sigmoid = self.IRS_model.forward_avail(self.complete_mm_data, self.avail)
+        # Does the direct effect sigm(y_i) separate complete from incomplete items?
+        sig = item_scores_sigmoid.squeeze()
+        full = self.avail.min(dim=1).values == 1
+        print("IRS_sig: full_mean=%.5f, incomplete_mean=%.5f, full_median=%.5f, incomplete_median=%.5f"
+              % (sig[full].mean().item(), sig[~full].mean().item(),
+                 sig[full].median().item(), sig[~full].median().item()))
         self.incomplete_items_counts = {item: 0 for item in self.missing_items}
         if self.debias_mode != "multiply":
             # Training-time deconfounding: serve with the rule matching training

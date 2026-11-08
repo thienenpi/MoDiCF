@@ -63,6 +63,10 @@ def parse_args():
                         help="Max inverse-propensity weight (ipw mode).")
     parser.add_argument("--lambda_indep", type=float, default=0.0,
                         help="Weight of the independence penalty between relevance (u.i) and visibility (y_i); 0 disables.")
+    parser.add_argument("--irs_avail", type=str, default="none", choices=["none", "concat", "only"],
+                        help="What the item branch sees besides content: none = completed features only "
+                             "(original flow); concat = features + per-modality availability indicator; "
+                             "only = availability indicator alone.")
 
     # Group-based rank margin (subtract mode only): cluster users into "hobby" groups
     # by embedding similarity; each group shares one rank-based margin gamma_{g,i}.

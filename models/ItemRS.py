@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class ItemRS(nn.Module):
-    def __init__(self, input_size, modalities, embedding_dim):
+    def __init__(self, input_size, modalities, embedding_dim, avail_mode='none'):
         super(ItemRS, self).__init__()
         self.input_size = input_size
         self.modalities = modalities
@@ -29,6 +29,39 @@ class ItemRS(nn.Module):
             nn.Linear(self.embedding_dim, 1),
         )
         self.sigmoid = nn.Sigmoid()
+
+        # Availability-aware head (--irs_avail): lets sigm(y_i) see which modalities
+        # the item actually has (indicator o_i, 1 = observed). 'none' keeps the original flow.
+        if avail_mode not in ('none', 'concat', 'only'):
+            raise ValueError("unknown avail_mode %r" % avail_mode)
+        self.avail_mode = avail_mode
+        if avail_mode == 'concat':      # content + availability flags
+            self.out_avail = nn.Sequential(
+                nn.Linear(self.embedding_dim * self.n_modalities + self.n_modalities, self.embedding_dim),
+                nn.LeakyReLU(),
+                nn.Linear(self.embedding_dim, 1),
+            )
+        elif avail_mode == 'only':      # availability flags alone
+            self.out_avail = nn.Sequential(
+                nn.Linear(self.n_modalities, 16),
+                nn.LeakyReLU(),
+                nn.Linear(16, 1),
+            )
+
+    def forward_avail(self, x, avail):
+        """Item score from the availability-aware head (--irs_avail concat/only).
+
+        x: list of per-modality features [B, d_m]; avail: [B, n_modalities] float, 1 = observed.
+        Returns (y_i, sigm(y_i)) like forward().
+        """
+        if self.avail_mode == 'only':
+            out = self.out_avail(avail)
+        elif self.avail_mode == 'concat':
+            encoded = [self.encoder[self.modalities[i] + '_enc'](x[i]) for i in range(self.n_modalities)]
+            out = self.out_avail(torch.cat(encoded + [avail], 1))
+        else:
+            raise ValueError("forward_avail needs avail_mode 'concat' or 'only', got %r" % self.avail_mode)
+        return out, self.sigmoid(out)
 
     def forward(self, x):
         encoded = []
