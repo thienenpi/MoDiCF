@@ -491,7 +491,8 @@ class Trainer:
                 return
 
         for epoch in range(start_epoch, self.epoch):
-            if (self.debias_mode == "subtract" and self.gamma_mode == "group"
+            if ((self.debias_mode == "subtract" or self.test_debias_mode == "subtract")   # (a): test-only debias also needs margins
+                    and self.gamma_mode == "group"
                     and epoch % self.group_recompute_every == 0):
                 self._update_group_margins()
 
@@ -643,7 +644,7 @@ class Trainer:
               % (sig[full].mean().item(), sig[~full].mean().item(),
                  sig[full].median().item(), sig[~full].median().item()))
         self.incomplete_items_counts = {item: 0 for item in self.missing_items}
-        if self.debias_mode != "multiply":
+        if self.debias_mode != "multiply" or self.test_debias_mode != self.debias_mode:   # (a): train multiply, test subtract
             # Training-time deconfounding: serve with the rule matching training
             # (or test_debias_mode for the consistency-isolation run).
             use_group = self.gamma_mode == "group" and self.test_debias_mode == "subtract"
