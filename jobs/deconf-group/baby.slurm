@@ -17,6 +17,9 @@ IRS_AVAIL="${3:-none}"
 # 3rd arg given -> tag log/run dir with it; omitted -> old names (old M2 runs)
 TAG=""
 [ -n "$3" ] && TAG="-avail${IRS_AVAIL}"
+# 4th arg "testonly" -> (a): train like MoDiCF (multiply), group-margin debias at inference only
+DEBIAS_ARGS="--debias_mode subtract"
+[ "$4" = "testonly" ] && { DEBIAS_ARGS="--debias_mode multiply --test_debias_mode subtract"; TAG="${TAG}-testonly"; }
 SEED="${SLURM_ARRAY_TASK_ID:-0}"
 LOG="logs/deconf-group-baby-l${LAMBDA}-k${GROUP_K}${TAG}-seed${SEED}-${SLURM_JOB_ID}.out"
 exec > "$LOG" 2>&1
@@ -58,7 +61,7 @@ cp -n "${PRETRAIN}/last_model.pth" "${RUN_DIR}/"
 echo "=== Stage 2: joint MoDiCF training"
 python main.py \
     --dataset baby --load_dir "${RUN_DIR}/" --load_model last_model.pth --seed ${SEED} \
-    --debias_mode subtract --gamma_mode group --lambda_cf ${LAMBDA} --group_k ${GROUP_K} \
+    ${DEBIAS_ARGS} --gamma_mode group --lambda_cf ${LAMBDA} --group_k ${GROUP_K} \
     --irs_avail ${IRS_AVAIL} \
     --ckpt_dir "${RUN_DIR}/"
 
