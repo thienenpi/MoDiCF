@@ -1,0 +1,50 @@
+Job 85702 on gpu03; variant=raid-cf; lambda_cf=1.0; group_k=10; retrieval_k=10; beta=0.3; seed=7; started Wed Nov 25 07:08:12 AM UTC 2026
+Wed Nov 25 07:08:12 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.82.07              Driver Version: 580.82.07      CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-PCIE-40GB          On  |   00000000:64:00.0 Off |                    0 |
+| N/A   35C    P0             33W /  250W |       0MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+=== Stage 1 skipped: reusing ./checkpoint/tiktok/gmddc-pretrain-k10-b0.3-seed7
+=== Stage 2: joint training (raid-cf)
+[ INFO : 2026-11-25 07:10:38,877 ] - Preprocess missing values with zero
+[ INFO : 2026-11-25 07:10:45,993 ] - Pretrained diffusion model is loaded from: ./checkpoint/tiktok/raid-cf-raid-cf-l1.0-gk10-k10-b0.3-seed7/last_model.pth
+/media/lhbac29/raid-cf/main.py:733: DeprecationWarning: Please import `csr_matrix` from the `scipy.sparse` namespace; the `scipy.sparse.csr` namespace is deprecated and will be removed in SciPy 2.0.0.
+  ui_graph = pickle.load(open('./data/' + args.dataset + '/train_mat', 'rb'))
+[ INFO : 2026-11-25 07:10:48,884 ] - Completed data loaded from: ./checkpoint/tiktok/raid-cf-raid-cf-l1.0-gk10-k10-b0.3-seed7/completed_data.pkl
+/media/lhbac29/raid-cf/main.py:111: DeprecationWarning: Please import `csr_matrix` from the `scipy.sparse` namespace; the `scipy.sparse.csr` namespace is deprecated and will be removed in SciPy 2.0.0.
+  self.ui_graph = self.ui_graph_raw = pickle.load(open('./data/' + self.dataset + '/train_mat', 'rb'))
+[ INFO : 2026-11-25 07:10:49,421 ] - Missing rate = 0.400000, complete strategy: zero
+[retrieval] Loaded cached neighbor index from ./data/tiktok/retrieval_neighbors_seed7_MR0.4_K10_beta0.3.npz
+n_users=9308, n_items=6710
+n_interactions=65671
+n_train=59541, n_test=6130, sparsity=0.00105
+Traceback (most recent call last):
+  File "/media/lhbac29/raid-cf/main.py", line 755, in <module>
+    main(args)
+  File "/media/lhbac29/raid-cf/main.py", line 752, in main
+    trainer.train()
+  File "/media/lhbac29/raid-cf/main.py", line 484, in train
+    start_epoch = self.load_checkpoint()
+  File "/media/lhbac29/raid-cf/main.py", line 424, in load_checkpoint
+    ckpt = torch.load(self.ckpt_path, map_location=self.device)
+  File "/media/lhbac29/miniconda3/envs/thesis/lib/python3.9/site-packages/torch/serialization.py", line 1004, in load
+    with _open_zipfile_reader(opened_file) as opened_zipfile:
+  File "/media/lhbac29/miniconda3/envs/thesis/lib/python3.9/site-packages/torch/serialization.py", line 456, in __init__
+    super().__init__(torch._C.PyTorchFileReader(name_or_buffer))
+RuntimeError: PytorchStreamReader failed reading zip archive: failed finding central directory
+Finished Wed Nov 25 07:11:23 AM UTC 2026
